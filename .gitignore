@@ -1,0 +1,40 @@
+# Binaries
+mock-api/mock-api
+gateway/gateway
+
+# Dependencies
+agent/node_modules/
+
+# Build output
+agent/dist/
+agent/src/wallet/wallet-bridge-bundle.js
+
+# Environment
+.env
+.env.local
+
+# Permissions context (runtime-generated)
+.permissions-context.json
+agent/src/wallet/.permissions-context.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.claude/
+
+# Logs
+*.log
+faucet-links
+
+# Skill files (not part of project source)
+.agents/
+skills-lock.json
+
+# HackQuest submission checklist (not source code)
+DEMO-CHECKLIST.md
