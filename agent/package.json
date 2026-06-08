@@ -1,0 +1,29 @@
+{
+  "name": "agentic-pay-to-crawl-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "bridge": "tsx src/wallet/wallet-bridge.ts",
+    "agent:stub": "PAYMENT_MODE=stub tsx src/index.ts",
+    "agent:bridge": "PAYMENT_MODE=bridge tsx src/index.ts",
+    "agent:live": "PAYMENT_MODE=live tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@metamask/smart-accounts-kit": "^1.6.0",
+    "dotenv": "^17.4.2",
+    "openai": "^4.95.0",
+    "viem": "^2.28.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.8"
+  }
+}
