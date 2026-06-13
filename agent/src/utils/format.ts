@@ -137,11 +137,6 @@ export function reasoningBox(text: string): string {
   return [color(top, C.magenta), ...mid, color(bot, C.magenta)].join("\n");
 }
 
-/** Iteration header */
-export function iterationHeader(n: number, max: number): string {
-  return color(`  ── iteration ${n}/${max} ${"─".repeat(40)}`, C.dim);
-}
-
 /** Catalog item line */
 export function catalogItem(item: { path: string; priceUSD: number; freshness: string; sources: number; verified: boolean }): string {
   const v = item.verified ? color("✓ verified", C.brightGreen) : color("✗ unverified", C.brightRed);

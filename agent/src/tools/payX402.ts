@@ -350,6 +350,5 @@ async function payX402Stub(
   const body = await res.json();
   console.log(`[payX402][stub] ✅ Paid ${cost} USDC to ${recipient}`);
   console.log(`[payX402][stub]    txHash: ${txHash} (stub — no on-chain tx)`);
-  console.log(`[payX402][stub]    On mainnet: ${explorerTxLink("0xREAL_TX_HASH")}`);
   return { success: true, taskId: webhookPayload.taskId, txHash };
 }

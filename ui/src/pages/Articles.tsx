@@ -267,8 +267,8 @@ export function Articles() {
         }).filter(Boolean)
 
         setArticles(merged)
-      } catch (err) {
-        console.error('Failed to fetch articles:', err)
+      } catch {
+        // Gateway unavailable — show empty state
       } finally {
         setLoading(false)
       }

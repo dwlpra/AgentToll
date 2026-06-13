@@ -3,7 +3,6 @@ package middleware
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"gateway/payments"
 )
@@ -61,7 +60,6 @@ func isBrowserRequest(r *http.Request) bool {
 		return true
 	}
 
-	_ = strings.TrimSpace("") // avoid unused import
 	return false
 }
 

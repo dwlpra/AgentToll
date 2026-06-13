@@ -30,7 +30,7 @@ export const ERC20_ABI = [
 ] as const
 
 export function getUsdcAddress(chainId: number): `0x${string}` {
-  return USDC_ADDRESSES[chainId] ?? USDC_ADDRESSES[84532]
+  return USDC_ADDRESSES[chainId] ?? USDC_ADDRESSES[8453]
 }
 
 export function formatUsdc(raw: bigint): string {
@@ -38,6 +38,3 @@ export function formatUsdc(raw: bigint): string {
   return value.toFixed(2)
 }
 
-export function parseUsdc(usd: number): bigint {
-  return BigInt(Math.round(usd * Math.pow(10, USDC_DECIMALS)))
-}

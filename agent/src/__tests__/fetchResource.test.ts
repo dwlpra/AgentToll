@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { fetchCatalog, fetchResource, fetchWithPayment } from "../tools/fetchResource.js";
 
-// These tests require the gateway + mock-api running on localhost:19090
-// Run: cd mock-api && ./mock-api && cd gateway && ./gateway
-const GATEWAY = "http://localhost:19090";
-
 describe("fetchCatalog", () => {
   it("returns 3 catalog entries", async () => {
     const catalog = await fetchCatalog();
@@ -55,7 +51,7 @@ describe("fetchResource without payment returns 402", () => {
     const result = await fetchResource("/reports/asia-daily");
     const accept = result.accepts![0];
     expect(accept.scheme).toBe("exact");
-    expect(accept.network).toBe("base-sepolia");
+    expect(accept.network).toBe("base");
     expect(accept.asset).toBe("0x036CbD53842c5426634e7929541eC2318f3dCF7e");
     expect(accept.maxTimeoutSeconds).toBe(60);
   });

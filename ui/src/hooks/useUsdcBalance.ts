@@ -3,7 +3,7 @@ import { getUsdcAddress, ERC20_ABI, formatUsdc } from '../lib/usdc'
 
 export function useUsdcBalance() {
   const { address, chainId } = useAccount()
-  const usdcAddress = getUsdcAddress(chainId ?? 84532)
+  const usdcAddress = getUsdcAddress(chainId ?? 8453)
 
   const { data: balance, refetch } = useReadContract({
     address: usdcAddress,
