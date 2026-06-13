@@ -36,5 +36,17 @@ faucet-links
 .agents/
 skills-lock.json
 
-# HackQuest submission checklist (not source code)
+# Internal docs (not for public repo)
 DEMO-CHECKLIST.md
+BRIEF*.md
+BRIEF-v2-agentic-pay-to-crawl.md
+DEMO-VIDEO-SCRIPT.md
+
+description.md
+mock
+
+# Runtime PID files
+.pids/
+
+# UI build output
+ui/dist/ 

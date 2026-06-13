@@ -12,9 +12,14 @@ func testConfig() X402Config {
 	return NewX402Config("0xGW", "0xUSDC", "base-sepolia")
 }
 
+func testConfigPtr() *X402Config {
+	cfg := testConfig()
+	return &cfg
+}
+
 func TestWebhookAuthorizesOnConfirmed(t *testing.T) {
 	store := NewStore()
-	handler := WebhookHandler(store, testConfig())
+	handler := WebhookHandler(store, testConfigPtr())
 
 	payload := WebhookPayload{
 		TaskID:   "task-001",
@@ -43,7 +48,7 @@ func TestWebhookAuthorizesOnConfirmed(t *testing.T) {
 
 func TestWebhookRejectsGet(t *testing.T) {
 	store := NewStore()
-	handler := WebhookHandler(store, testConfig())
+	handler := WebhookHandler(store, testConfigPtr())
 
 	req := httptest.NewRequest("GET", "/webhook", nil)
 	w := httptest.NewRecorder()
@@ -57,7 +62,7 @@ func TestWebhookRejectsGet(t *testing.T) {
 
 func TestWebhookDoesNotAuthorizeOnPending(t *testing.T) {
 	store := NewStore()
-	handler := WebhookHandler(store, testConfig())
+	handler := WebhookHandler(store, testConfigPtr())
 
 	payload := WebhookPayload{
 		TaskID:   "task-002",
@@ -80,7 +85,7 @@ func TestWebhookDoesNotAuthorizeOnPending(t *testing.T) {
 
 func TestWebhookRejectsAmountMismatch(t *testing.T) {
 	store := NewStore()
-	handler := WebhookHandler(store, testConfig())
+	handler := WebhookHandler(store, testConfigPtr())
 
 	payload := WebhookPayload{
 		TaskID:   "task-003",
@@ -109,7 +114,7 @@ func TestWebhookRejectsAmountMismatch(t *testing.T) {
 
 func TestWebhookAcceptsEmptyAmount(t *testing.T) {
 	store := NewStore()
-	handler := WebhookHandler(store, testConfig())
+	handler := WebhookHandler(store, testConfigPtr())
 
 	// Empty amount should pass (backward compat with stub mode)
 	payload := WebhookPayload{

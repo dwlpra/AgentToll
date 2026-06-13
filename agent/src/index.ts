@@ -2,19 +2,17 @@
  * index.ts — Entry point agent
  *
  * Alur:
- * 1. Parse query dari CLI argument
- * 2. Pre-flight check: pastikan permissionsContext ada (untuk live mode)
- * 3. Jalankan agent loop (Venice AI reasoning + payment + data retrieval)
- *
- * Cara pakai:
- *   npx tsx src/index.ts "query kamu di sini"
- *   npx tsx src/index.ts  (pakai default query)
+ * 1. Validate config & warn about missing values
+ * 2. Parse query dari CLI argument
+ * 3. Pre-flight check: pastikan permissionsContext ada (untuk live mode)
+ * 4. Jalankan agent loop (Venice AI reasoning + payment + data retrieval)
  */
 
 import { runAgent } from "./brain.js";
 import { runMockBrain } from "./mock-brain.js";
 import { initPaymentContext } from "./tools/payX402.js";
-import { config } from "./config.js";
+import { config, validateConfig, fetchAgentConfigFromGateway, fetchProviderWalletFromGateway } from "./config.js";
+import * as fmt from "./utils/format.js";
 
 // Query from CLI args, or default query about Asian crypto market sentiment
 const query = process.argv.slice(2).join(" ") ||
@@ -24,21 +22,56 @@ const query = process.argv.slice(2).join(" ") ||
 const useMock = !process.env.VENICE_API_KEY;
 
 async function main() {
-  console.log("============================================================");
-  console.log(`USER QUERY: ${query}`);
-  console.log(`BUDGET: $${config.budgetUSD} USDC`);
-  console.log(`PAYMENT MODE: ${config.paymentMode}`);
-  console.log("============================================================\n");
+  // Startup banner
+  console.log(fmt.color("\n  ╔═══════════════════════════════════════════════╗", "\x1b[96m"));
+  console.log(fmt.color("  ║        PayCrawl — Pay-Per-Crawl Agent        ║", "\x1b[96m\x1b[1m"));
+  console.log(fmt.color("  ║   MetaMask Smart Accounts × Venice AI × 1Shot ║", "\x1b[96m"));
+  console.log(fmt.color("  ╚═══════════════════════════════════════════════╝\n", "\x1b[96m"));
+
+  console.log(fmt.infoTag("Query", query));
+  console.log(fmt.infoTag("Budget", `$${config.budgetUSD} USDC`));
+  console.log(fmt.infoTag("Payment Mode", config.paymentMode));
+  console.log(fmt.infoTag("Chain", `Base (${config.chainId})`));
+  console.log(fmt.infoTag("Gateway", config.gatewayUrl));
+
+  // Startup validation — warn about missing/invalid config
+  const warnings = validateConfig();
+  if (warnings.length > 0) {
+    console.log(fmt.section("CONFIGURATION WARNINGS"));
+    for (const w of warnings) {
+      console.log(fmt.configWarning(w));
+    }
+  }
+
+  // Fetch agent config from gateway (set via React UI)
+  const agentCfg = await fetchAgentConfigFromGateway();
+  if (agentCfg) {
+    if (agentCfg.budgetUSD) {
+      config.budgetUSD = agentCfg.budgetUSD;
+      config.budgetUnits = String(Math.round(agentCfg.budgetUSD * 1e6));
+      console.log(fmt.infoTag("Budget (from UI)", `$${config.budgetUSD} USDC`));
+    }
+    if (agentCfg.wallet) {
+      config.agentWallet = agentCfg.wallet;
+      console.log(fmt.infoTag("Agent Wallet (from UI)", config.agentWallet));
+    }
+  }
+
+  // Fetch provider wallet from gateway (set via MetaMask login)
+  const providerWallet = await fetchProviderWalletFromGateway();
+  if (providerWallet) {
+    config.providerWallet = providerWallet;
+    console.log(fmt.infoTag("Provider Wallet (from UI)", config.providerWallet));
+  }
 
   // Pre-flight: cek apakah permissionsContext sudah tersedia
-  // Jika belum, agent tetap jalan tapi pakai stub fallback
   const ready = await initPaymentContext();
   if (!ready && config.paymentMode === "live") {
-    console.log("[agent] continuing in stub fallback mode\n");
+    console.log(fmt.color("\n  ⚠ No permissionsContext — continuing in stub fallback mode\n", "\x1b[93m"));
   }
 
   if (useMock) {
-    console.log("[info] VENICE_API_KEY not set — using mock brain");
+    console.log(fmt.color("\n  ℹ VENICE_API_KEY not set — using mock brain\n", "\x1b[93m"));
     await runMockBrain(query);
   } else {
     await runAgent(query);
@@ -46,6 +79,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[fatal]", err);
+  console.error(fmt.color(`\n  ✖ FATAL: ${err instanceof Error ? err.message : err}\n`, "\x1b[91m\x1b[1m"));
   process.exit(1);
 });

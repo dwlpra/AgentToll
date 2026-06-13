@@ -1,6 +1,9 @@
 package payments
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,7 +22,12 @@ type WebhookPayload struct {
 	TxHash   string `json:"txHash"`
 }
 
-func WebhookHandler(store *Store, cfg X402Config) http.HandlerFunc {
+// WebhookSecret is used to HMAC-sign webhook payloads.
+// In production, set via GATEWAY_WEBHOOK_SECRET env var.
+// If empty, HMAC validation is skipped (for dev/stub mode).
+var WebhookSecret string
+
+func WebhookHandler(store *Store, cfg *X402Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -34,6 +42,26 @@ func WebhookHandler(store *Store, cfg X402Config) http.HandlerFunc {
 
 		log.Printf("[webhook] received: taskId=%s status=%s wallet=%s resource=%s amount=%s",
 			payload.TaskID, payload.Status, payload.Wallet, payload.Resource, payload.Amount)
+
+		// HMAC validation: if webhook secret is set, verify signature
+		if WebhookSecret != "" {
+			signature := r.Header.Get("X-Webhook-Signature")
+			if signature == "" {
+				log.Printf("[webhook] REJECTED: missing X-Webhook-Signature header")
+				http.Error(w, `{"error":"missing signature"}`, http.StatusUnauthorized)
+				return
+			}
+			// Re-encode payload body to verify HMAC
+			bodyBytes, _ := json.Marshal(payload)
+			mac := hmac.New(sha256.New, []byte(WebhookSecret))
+			mac.Write(bodyBytes)
+			expectedMAC := hex.EncodeToString(mac.Sum(nil))
+			if !hmac.Equal([]byte(signature), []byte(expectedMAC)) {
+				log.Printf("[webhook] REJECTED: invalid HMAC signature")
+				http.Error(w, `{"error":"invalid signature"}`, http.StatusUnauthorized)
+				return
+			}
+		}
 
 		if payload.Status == "confirmed" || payload.Status == "success" {
 			expectedUnits, _, ok := cfg.GetPriceForPath(payload.Resource)

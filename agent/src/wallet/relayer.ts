@@ -56,16 +56,26 @@ let rpcId = 0;
  * Setiap call berisi: method name + params, dan mengembalikan result atau error.
  */
 async function rpcCall(method: string, params: any[]): Promise<any> {
-  const res = await fetch(config.relayerBaseUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: ++rpcId,
-      method,
-      params,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(config.relayerBaseUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: ++rpcId,
+        method,
+        params,
+      }),
+    });
+  } catch (err) {
+    throw new Error(`1Shot RPC network error (${method}): ${err instanceof Error ? err.message : err}`);
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "unknown");
+    throw new Error(`1Shot RPC HTTP ${res.status} (${method}): ${text.slice(0, 200)}`);
+  }
 
   const data = await res.json();
   if (data.error) {
@@ -175,9 +185,14 @@ export class OneShotRelayer {
   async pollStatus(taskId: string, timeoutMs: number): Promise<RelayerTask> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      const status = await this.getStatus(taskId);
-      if (["confirmed", "success", "failed", "reverted"].includes(status.status)) {
-        return status;
+      try {
+        const status = await this.getStatus(taskId);
+        if (["confirmed", "success", "failed", "reverted"].includes(status.status)) {
+          return status;
+        }
+      } catch (err) {
+        // Network error during poll — log and continue retrying
+        console.error(`[relayer] poll error for ${taskId}: ${err instanceof Error ? err.message : err}`);
       }
       // Tunggu 2 detik sebelum poll lagi (jangan spam relayer)
       await new Promise((r) => setTimeout(r, 2000));

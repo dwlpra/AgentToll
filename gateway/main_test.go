@@ -62,7 +62,7 @@ func TestX402MiddlewareReturns402(t *testing.T) {
 		w.Write([]byte(`{"data":"should not reach"}`))
 	})
 
-	handler := middleware.X402Middleware(store, cfg, upstream)
+	handler := middleware.X402Middleware(store, &cfg, upstream)
 
 	req := httptest.NewRequest("GET", "/reports/asia-daily", nil)
 	w := httptest.NewRecorder()
@@ -103,7 +103,7 @@ func TestX402MiddlewarePassesAuthorized(t *testing.T) {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	handler := middleware.X402Middleware(store, cfg, upstream)
+	handler := middleware.X402Middleware(store, &cfg, upstream)
 
 	// Authorize first
 	store.Authorize("0xTEST", "/reports/asia-daily", 5*60*1000000000) // 5 min
@@ -127,7 +127,7 @@ func TestX402MiddlewareBypassesCatalog(t *testing.T) {
 		w.Write([]byte(`{"catalog":[]}`))
 	})
 
-	handler := middleware.X402Middleware(store, cfg, upstream)
+	handler := middleware.X402Middleware(store, &cfg, upstream)
 
 	req := httptest.NewRequest("GET", "/catalog", nil)
 	w := httptest.NewRecorder()

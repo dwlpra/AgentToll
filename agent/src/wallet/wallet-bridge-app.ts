@@ -18,13 +18,23 @@
  */
 
 import { createWalletClient, custom } from "viem";
-import { baseSepolia } from "viem/chains";
+import { baseSepolia, base } from "viem/chains";
 import { erc7715ProviderActions } from "@metamask/smart-accounts-kit/actions";
 
 // === CONSTANTS ===
 
-// USDC contract di Base Sepolia testnet
-const USDC_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+// Chain config — mainnet or testnet based on params
+const params = new URLSearchParams(window.location.search);
+// Default to Mainnet (matches .env CHAIN_ID=8453). Use ?network=testnet for Sepolia.
+const isTestnet = params.get("network") === "testnet";
+const chain = isTestnet ? baseSepolia : base;
+const CHAIN_NAME = isTestnet ? "Base Sepolia" : "Base Mainnet";
+const CHAIN_ID_HEX = isTestnet ? "0x14a34" : "0x2105";
+
+// USDC contract
+const USDC = isTestnet
+  ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"    // Base Sepolia
+  : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";   // Base Mainnet
 
 // === STATE ===
 
@@ -43,8 +53,8 @@ const logEl = () => document.getElementById("log")!;
 function log(msg: string, type = "") {
   const el = logEl();
   const time = new Date().toLocaleTimeString();
-  const color = type === 'ok' ? '#4caf50' : type === 'err' ? '#f44336' : type === 'warn' ? '#ff9800' : '#2196f3';
-  el.innerHTML += `<div><span style="color:#555">${time}</span> <span style="color:${color}">${msg}</span></div>`;
+  const color = type === 'ok' ? '#66c800' : type === 'err' ? '#fc401f' : type === 'warn' ? '#b8a581' : '#3c8aff';
+  el.innerHTML += `<div><span style="color:#5b616e">${time}</span> <span style="color:${color}">${msg}</span></div>`;
   el.scrollTop = el.scrollHeight;
 }
 
@@ -84,13 +94,14 @@ function connectWs() {
 function showPaymentCard(msg: any) {
   const cost = (Number(msg.amount) / 1e6).toFixed(2);
   document.getElementById("paymentArea")!.innerHTML = `
-    <div class="payment-card">
-      <div class="amount">${cost} USDC</div>
-      <div class="detail">Resource: ${msg.resource}</div>
-      <div class="detail">Network: ${msg.network}</div>
-      <div style="margin-top:12px">
-        <button class="btn" onclick="window._approvePayment('${msg.id}','${msg.resource}','${msg.amount}','${msg.asset}','${msg.payTo}')">Approve & Pay via MetaMask</button>
-        <button class="btn secondary" onclick="window._rejectPayment('${msg.id}')">Reject</button>
+    <div class="bg-white rounded-2xl border-2 border-blue-500 p-8 text-center shadow-lg shadow-blue-100">
+      <div class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Payment Request</div>
+      <div class="text-5xl font-extrabold" style="color:#0000ff">${cost} USDC</div>
+      <div class="text-base mt-2 font-medium" style="color:#3c8aff">Resource: ${msg.resource}</div>
+      <div class="text-sm text-gray-400 mt-1">Network: ${msg.network}</div>
+      <div class="mt-6 flex gap-3 justify-center">
+        <button class="px-6 py-3 rounded-xl font-bold text-white text-base transition-all hover:opacity-90" style="background:#0000ff" onclick="window._approvePayment('${msg.id}','${msg.resource}','${msg.amount}','${msg.asset}','${msg.payTo}')">Approve & Pay</button>
+        <button class="px-6 py-3 rounded-xl font-bold bg-gray-100 text-gray-600 text-base hover:bg-gray-200 transition-all" onclick="window._rejectPayment('${msg.id}')">Reject</button>
       </div>
     </div>`;
 }
@@ -129,7 +140,7 @@ function showPaymentCard(msg: any) {
 
     // Step 2: Create viem wallet client dengan MetaMask sebagai transport
     walletClient = createWalletClient({
-      chain: baseSepolia,
+      chain,
       transport: custom(eth),
     });
 
@@ -146,11 +157,11 @@ function showPaymentCard(msg: any) {
 
     // Step 4: Pastikan di chain yang benar
     const chainId = await eth.request({ method: "eth_chainId" });
-    if (chainId !== "0x14a34") { // 0x14a34 = 84532 = Base Sepolia
-      log("Switching to Base Sepolia...", "warn");
-      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x14a34" }] });
+    if (chainId !== CHAIN_ID_HEX) {
+      log(`Switching to ${CHAIN_NAME}...`, "warn");
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
     }
-    log("On Base Sepolia", "ok");
+    log(`On ${CHAIN_NAME}`, "ok");
   } catch (err: any) {
     log(`Connection failed: ${err.message}`, "err");
   }
@@ -186,7 +197,7 @@ function showPaymentCard(msg: any) {
 
     // Bangun permission request sesuai PermissionRequestParameter dari kit v1.6.0
     const permissionRequest = [{
-      chainId: baseSepolia.id,                    // 84532 (Base Sepolia)
+      chainId: chain.id,                            // 8453 (mainnet) or 84532 (testnet)
       to: "0xf1ef956eff4181Ce913b664713515996858B9Ca9" as `0x${string}`, // 1Shot targetAddress
       from: account as `0x${string}`,             // wallet user
       expiry,                                     // kedaluwarsa dalam 7 hari
@@ -194,7 +205,7 @@ function showPaymentCard(msg: any) {
         type: "erc20-token-periodic",             // tipe: budget periodik
         isAdjustmentAllowed: false,               // tidak boleh adjust otomatis
         data: {
-          tokenAddress: USDC_BASE_SEPOLIA as `0x${string}`, // USDC contract
+          tokenAddress: USDC as `0x${string}`,            // USDC contract (mainnet or testnet)
           periodAmount: BigInt(budgetUnits),       // max 1,000,000 units ($1) per periode
           periodDuration: 24 * 60 * 60,            // 24 jam per periode
           startTime: now,                          // mulai sekarang
@@ -214,7 +225,7 @@ function showPaymentCard(msg: any) {
         log("Kit method unavailable, trying wallet_requestPermissions...", "warn");
         granted = await (window as any).ethereum.request({
           method: "wallet_requestPermissions",
-          params: [{ erc7715: { chains: [baseSepolia.id] } }],
+          params: [{ erc7715: { chains: [chain.id] } }],
         });
       }
     } catch (permErr: any) {
@@ -348,7 +359,7 @@ function showPermissionDetails(grantedAt: number, expiresAt: number) {
 
     log(`Payment approved! Waiting for confirmation...`, "ok");
     document.getElementById("paymentArea")!.innerHTML =
-      '<div class="status connected">Payment approved. Waiting for next request...</div>';
+      '<div class="bg-white rounded-2xl border border-gray-200 p-8 text-center font-semibold" style="color:#66c800">✓ Payment approved. Waiting for next request...</div>';
   } catch (err: any) {
     log(`Payment failed: ${err.message}`, "err");
     ws.send(JSON.stringify({ type: "payment_response", id, success: false, error: err.message }));
@@ -363,7 +374,7 @@ function showPermissionDetails(grantedAt: number, expiresAt: number) {
   log("Payment rejected by user", "err");
   ws.send(JSON.stringify({ type: "payment_response", id, success: false, error: "rejected" }));
   document.getElementById("paymentArea")!.innerHTML =
-    '<div class="status waiting">Waiting for payment requests from agent...</div>';
+    '<div class="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-400 text-lg italic">Waiting for payment requests from agent...</div>';
 };
 
 // === INIT ===

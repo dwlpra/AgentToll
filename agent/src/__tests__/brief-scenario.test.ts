@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { fetchCatalog, fetchResource, fetchWithPayment } from "../tools/fetchResource.js";
 import { payX402 } from "../tools/payX402.js";
+import { config } from "../config.js";
 
 /**
  * Full brief scenario test:
@@ -48,8 +49,8 @@ describe("Brief scenario: 3-endpoint agent decision", () => {
     );
     expect(payResult.success).toBe(true);
 
-    // Retry — get data
-    const data = await fetchWithPayment("/reports/asia-daily", "0xAGENT_WALLET");
+    // Retry — get data (use same wallet that was authorized by the payment)
+    const data = await fetchWithPayment("/reports/asia-daily", config.agentWallet);
     expect(data.status).toBe(200);
     expect(data.data).toBeDefined();
     expect(data.data.id).toBe("asia-daily");
@@ -103,8 +104,8 @@ describe("Brief scenario: 3-endpoint agent decision", () => {
     const payResult = await payX402("/reports/deep-dive", accept.maxAmountRequired, accept.asset, accept.payTo);
     expect(payResult.success).toBe(true);
 
-    // Get data
-    const data = await fetchWithPayment("/reports/deep-dive", "0xAGENT_WALLET");
+    // Get data (use same wallet that was authorized by the payment)
+    const data = await fetchWithPayment("/reports/deep-dive", config.agentWallet);
     expect(data.status).toBe(200);
     expect(data.data.id).toBe("deep-dive");
     expect(data.data.summary.length).toBeGreaterThan(200); // comprehensive report

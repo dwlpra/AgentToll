@@ -49,29 +49,50 @@ interface PermissionsContext {
 let cachedContext: PermissionsContext | null = null;
 
 /**
- * Fetch permissionsContext dari bridge server.
+ * Fetch permissionsContext dari gateway API (set via React UI).
  *
- * permissionsContext ini adalah data yang MetaMask berikan saat user
+ * PermissionsContext ini adalah data yang MetaMask berikan saat user
  * klik "Grant Permissions". Isinya adalah delegation structure yang
  * memberi izin ke 1Shot relayer untuk mengeksekusi transaksi
  * atas nama user (ERC-7710).
  *
- * Context ini disimpan di file .permissions-context.json oleh bridge server.
+ * Context disimpan di gateway's AgentConfigManager via POST /api/agent-config.
  */
 async function getPermissionsContext(): Promise<PermissionsContext | null> {
   if (cachedContext) return cachedContext;
 
+  // Source 1: Gateway API (set via React UI MetaMask connection)
+  try {
+    const res = await fetch(`${config.gatewayUrl}/api/agent-config`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.permissionsContext && data.status !== "none") {
+        cachedContext = {
+          permissionsContext: data.permissionsContext,
+          wallet: data.wallet,
+          grantedAt: new Date().toISOString(),
+          chainId: config.chainId,
+        };
+        console.log(`[payX402] loaded permissionsContext from gateway: wallet=${data.wallet}`);
+        return cachedContext;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[payX402] failed to fetch from gateway: ${err.message}`);
+  }
+
+  // Source 2: Bridge server (legacy fallback)
   try {
     const res = await fetch(`${config.bridgeUrl}/permissions-context`);
     if (!res.ok) return null;
     const data = await res.json();
     if (data.permissionsContext) {
       cachedContext = data;
-      console.log(`[payX402] loaded permissionsContext: wallet=${data.wallet} granted=${data.grantedAt}`);
+      console.log(`[payX402] loaded permissionsContext from bridge: wallet=${data.wallet}`);
       return data;
     }
   } catch (err: any) {
-    console.error(`[payX402] failed to fetch permissionsContext: ${err.message}`);
+    console.error(`[payX402] failed to fetch from bridge: ${err.message}`);
   }
   return null;
 }
@@ -167,7 +188,10 @@ async function payX402Live(
     );
     console.log(`[payX402][live] encoded transfer: ${transferData.slice(0, 20)}...`);
 
-    // Step 4: Parse permissionsContext dari hex string ke array
+    // Step 4: Parse permissionsContext dari MetaMask Smart Accounts Kit
+    // Context ini mengandung delegation data yang TERMASUK EIP-7702 authorization.
+    // Saat user grant permissions via MetaMask (ERC-7715), EOA di-upgrade jadi smart account (EIP-7702).
+    // Delegation structure di dalam context memberi izin ke relayer untuk eksekusi ERC-7710.
     let permissionContext: any[];
     try {
       permissionContext = JSON.parse(ctx.permissionsContext);
@@ -176,19 +200,36 @@ async function payX402Live(
       permissionContext = [ctx.permissionsContext];
     }
 
+    // EIP-7702: extract authorization list dari context jika tersedia.
+    // MetaMask Smart Accounts Kit meng-encode 7702 authorization di dalam permissionsContext.
+    // 1Shot relayer membutuhkan ini untuk meng-upgrade EOA → smart account on-chain.
+    let authorizationList: any[] | undefined;
+    if (Array.isArray(permissionContext)) {
+      for (const pc of permissionContext) {
+        if (pc && typeof pc === "object" && pc.authorization) {
+          authorizationList = Array.isArray(pc.authorization)
+            ? pc.authorization
+            : [pc.authorization];
+          console.log(`[payX402][live] found EIP-7702 authorization in permissionsContext`);
+          break;
+        }
+      }
+    }
+
     // Step 5: Kirim ke 1Shot relayer untuk eksekusi gasless via ERC-7710
     // Relayer akan:
-    //   a. Decode delegation dari permissionsContext
+    //   a. Decode delegation dari permissionsContext (termasuk EIP-7702 auth)
     //   b. Build transaction dengan calldata kita
-    //   c. Eksekusi on-chain tanpa user bayar gas
+    //   c. Eksekusi on-chain tanpa user bayar gas (gasless via sponsor)
     //   d. Notify webhook gateway saat selesai
     const result = await relayer.send7710Transaction({
       chainId,
-      from: config.agentWallet,     // smart account address
+      from: config.agentWallet,     // smart account address (upgraded via EIP-7702)
       to: asset,                     // USDC contract address
       data: transferData,            // encoded transfer(recipient, amount)
-      permissionContext,             // delegation dari MetaMask grant
-      context: feeData.context,      // fee data context
+      permissionContext,             // delegation dari MetaMask grant (ERC-7715 + EIP-7702)
+      authorizationList,             // EIP-7702 authorization tuples (if extracted)
+      context: feeData.context,      // fee data context from relayer
       destinationUrl: `${config.gatewayUrl}/webhook`, // webhook untuk konfirmasi
       memo: `pay-per-crawl: ${resource}`,
     });
@@ -246,7 +287,7 @@ async function payX402Bridge(
   const res = await fetch(`${config.bridgeUrl}/request-payment`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, resource, amount, asset, payTo, network: "base-sepolia" }),
+    body: JSON.stringify({ id, resource, amount, asset, payTo, network: config.chainId === 8453 ? "base" : "base-sepolia" }),
   });
 
   if (!res.ok) {

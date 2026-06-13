@@ -38,6 +38,12 @@ type X402Config struct {
 	Prices        map[string]PriceEntry
 }
 
+// SetGatewayWallet updates the payment recipient wallet dynamically.
+// Called when provider connects MetaMask in the React UI.
+func (c *X402Config) SetGatewayWallet(wallet string) {
+	c.GatewayWallet = wallet
+}
+
 type PriceEntry struct {
 	Units       string
 	Description string
@@ -140,4 +146,17 @@ func (s *Store) GetRevenue() string {
 		total += val
 	}
 	return fmt.Sprintf("%.2f", total)
+}
+
+// UpdatePrices updates the price map (called when provider changes resource prices)
+func (c *X402Config) UpdatePrices(prices map[string]string, descriptions map[string]string) {
+	for path, units := range prices {
+		if entry, ok := c.Prices[path]; ok {
+			entry.Units = units
+			if desc, hasDesc := descriptions[path]; hasDesc {
+				entry.Description = desc
+			}
+			c.Prices[path] = entry
+		}
+	}
 }
