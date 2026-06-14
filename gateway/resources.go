@@ -325,8 +325,7 @@ func (cm *CrawlManager) HandleCrawl(w http.ResponseWriter, r *http.Request) {
 		query := req.Query
 
 		// Run agent as subprocess (non-blocking).
-		// Venice AI is used if VENICE_API_KEY is set in the agent's .env.
-		// Falls back to mock-brain if no key.
+		// Requires VENICE_API_KEY in the agent's .env (real Venice AI reasoning).
 		go func() {
 			cmd := exec.Command("npx", "tsx", "src/index.ts", query)
 			// Gateway runs from gateway/ dir (via Makefile: cd gateway && go run .)

@@ -5,7 +5,7 @@
  * - Venice AI API (model, key, URL)
  * - Blockchain (Base Sepolia testnet / Base mainnet)
  * - Wallet addresses (agent = pembayar, provider = penerima)
- * - Payment mode (stub/live)
+ * - Payment mode (live — real on-chain)
  * - 1Shot relayer URL
  *
  * Semua nilai bisa di-override via .env file
@@ -142,7 +142,7 @@ export function validateConfig(): string[] {
   const warnings: string[] = [];
 
   if (!config.veniceApiKey) {
-    warnings.push("VENICE_API_KEY not set — agent will use mock brain (no AI reasoning)");
+    warnings.push("VENICE_API_KEY not set — Venice AI calls will fail (agent cannot reason without it)");
   }
 
   if (config.agentWallet === "0xAGENT_WALLET") {

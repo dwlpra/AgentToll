@@ -112,7 +112,7 @@ export async function initPaymentContext(): Promise<boolean> {
 // 4. Relayer konfirmasi via webhook ke gateway
 // 5. Gateway authorize agent untuk akses resource
 //
-// Jika relayer gagal (testnet issue, dll), otomatis fallback ke stub.
+// Jika relayer gagal, pembayaran gagal jujur (tidak ada simulasi).
 async function payX402Live(
   resource: string,
   amount: string,

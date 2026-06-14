@@ -206,7 +206,7 @@ check: ## Cek prerequisites
 	@which npx > /dev/null 2>&1 && echo "  $(GREEN)✓ npx$(RESET)" || echo "  $(RED)✗ npx not found$(RESET)"
 	@[ -f agent/node_modules/.package-lock.json ] && echo "  $(GREEN)✓ node_modules$(RESET) (installed)" || echo "  $(YELLOW)⚠ node_modules missing$(RESET) — run 'make install'"
 	@[ -f agent/.env ] && echo "  $(GREEN)✓ .env$(RESET) (found)" || echo "  $(RED)✗ .env not found$(RESET) — copy from .env.example"
-	@grep -q "VENICE_API_KEY=.\+" agent/.env 2>/dev/null && echo "  $(GREEN)✓ VENICE_API_KEY$(RESET) (set)" || echo "  $(YELLOW)⚠ VENICE_API_KEY$(RESET) (empty — mock mode only)"
+	@grep -q "VENICE_API_KEY=.\+" agent/.env 2>/dev/null && echo "  $(GREEN)✓ VENICE_API_KEY$(RESET) (set)" || echo "  $(YELLOW)⚠ VENICE_API_KEY$(RESET) (empty — Venice AI calls will fail)"
 	@echo ""
 
 clean: stop ## Stop semua + hapus build artifacts

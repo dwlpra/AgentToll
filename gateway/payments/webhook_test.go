@@ -116,7 +116,7 @@ func TestWebhookAcceptsEmptyAmount(t *testing.T) {
 	store := NewStore()
 	handler := WebhookHandler(store, testConfigPtr())
 
-	// Empty amount should pass (backward compat with stub mode)
+	// Empty amount should pass (legacy compatibility)
 	payload := WebhookPayload{
 		TaskID:   "task-004",
 		Status:   "confirmed",

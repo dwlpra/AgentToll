@@ -237,7 +237,7 @@ const dashboardHTML = `<!DOCTYPE html>
             var shortWallet = p.wallet.slice(0, 6) + "..." + p.wallet.slice(-4);
             var shortTx = p.txHash ? p.txHash.slice(0, 10) + "..." : "pending";
             var txLink;
-            if (p.txHash && p.txHash.indexOf("stub") === -1 && p.txHash.indexOf("0x") === 0 && p.txHash.length > 20) {
+            if (p.txHash && p.txHash.indexOf("0x") === 0 && p.txHash.length > 20) {
               txLink = '<a class="text-sm font-mono font-semibold text-base-blue hover:underline" href="' + EXPLORER + "/tx/" + p.txHash + '" target="_blank">' + shortTx + " ↗</a>";
             } else {
               txLink = '<span class="text-sm font-mono text-gray-400">' + shortTx + '</span>';

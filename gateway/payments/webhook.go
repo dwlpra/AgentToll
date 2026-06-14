@@ -24,7 +24,7 @@ type WebhookPayload struct {
 
 // WebhookSecret is used to HMAC-sign webhook payloads.
 // In production, set via GATEWAY_WEBHOOK_SECRET env var.
-// If empty, HMAC validation is skipped (for dev/stub mode).
+// If empty, HMAC validation is skipped.
 var WebhookSecret string
 
 func WebhookHandler(store *Store, cfg *X402Config) http.HandlerFunc {
