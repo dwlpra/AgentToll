@@ -38,8 +38,8 @@ const ERC20_ABI = [
  * @returns Hex-encoded calldata siap kirim ke blockchain
  *
  * Contoh:
- *   encodeTransfer("0xFD2B...", 100000n)
- *   → "0xa9059cbb000000000000000000000000fd2b...00000000000000000000000000000000000000000000000000000000000186a0"
+ *   encodeTransfer("0xRECIPIENT...", 100000n)
+ *   → "0xa9059cbb000000000000000000000000[recipient]00000000000000000000000000000000000000000000000000000000000186a0"
  */
 export function encodeTransfer(to: `0x${string}`, amount: bigint): `0x${string}` {
   return encodeFunctionData({
