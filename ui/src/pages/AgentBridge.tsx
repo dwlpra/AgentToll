@@ -51,7 +51,7 @@ export function AgentBridge() {
     setGrantResult(null)
     setErrorMsg('')
     try {
-      const { erc7715ProviderActions } = await import('@metamask/smart-accounts-kit')
+      const { erc7715ProviderActions } = await import('@metamask/smart-accounts-kit/actions')
       const chain = chainId === 8453 ? base : baseSepolia
       const extendedClient = walletClient.extend(erc7715ProviderActions())
       const now = Math.floor(Date.now() / 1000)

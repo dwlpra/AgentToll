@@ -7,8 +7,11 @@ interface Props {
   disabled?: boolean
 }
 
+const SLIDER_MAX = 50
+
 export function BudgetSlider({ value, onChange, disabled }: Props) {
-  const pct = ((value - 0.1) / (10 - 0.1)) * 100
+  // Slider visual percentage (clamped; amounts above SLIDER_MAX pin to the right)
+  const pct = Math.min(((value - 0.1) / (SLIDER_MAX - 0.1)) * 100, 100)
 
   return (
     <motion.div
@@ -22,12 +25,27 @@ export function BudgetSlider({ value, onChange, disabled }: Props) {
           <DollarSign className="w-4 h-4 text-brand-400" />
           <span className="text-sm font-medium text-white">Spending Cap</span>
         </div>
-        <div className="text-right">
-          <span className="text-2xl font-bold text-white">${value.toFixed(2)}</span>
+
+        {/* Custom amount input — type any value */}
+        <div className="flex items-center gap-1">
+          <span className="text-lg font-bold text-surface-400">$</span>
+          <input
+            type="number"
+            min={0.1}
+            step={0.1}
+            value={value}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value)
+              onChange(Number.isFinite(v) && v > 0 ? v : 0.1)
+            }}
+            disabled={disabled}
+            className="w-20 bg-surface-50/80 text-right text-2xl font-bold text-white rounded-lg px-2 py-0.5 border border-surface-200/50 focus:border-brand-500/50 focus:outline-none disabled:opacity-50"
+          />
           <span className="text-xs text-surface-400 ml-1">USDC / 24h</span>
         </div>
       </div>
 
+      {/* Visual bar + slider for quick adjustment (amounts above SLIDER_MAX pin right) */}
       <div className="relative mb-3">
         <div className="h-2 bg-surface-200 rounded-full overflow-hidden">
           <motion.div
@@ -40,9 +58,9 @@ export function BudgetSlider({ value, onChange, disabled }: Props) {
         <input
           type="range"
           min={0.1}
-          max={10}
+          max={SLIDER_MAX}
           step={0.1}
-          value={value}
+          value={Math.min(value, SLIDER_MAX)}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           disabled={disabled}
           className="absolute inset-0 w-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
@@ -51,14 +69,13 @@ export function BudgetSlider({ value, onChange, disabled }: Props) {
 
       <div className="flex justify-between text-xs text-surface-500">
         <span>$0.10</span>
-        <span>$2.50</span>
-        <span>$5.00</span>
-        <span>$7.50</span>
-        <span>$10.00</span>
+        <span>$25</span>
+        <span>${SLIDER_MAX}.00+</span>
       </div>
 
+      {/* Presets */}
       <div className="mt-3 grid grid-cols-5 gap-1">
-        {[0.5, 1, 2, 5, 10].map((preset) => (
+        {[0.5, 1, 5, 10, 25].map((preset) => (
           <button
             key={preset}
             onClick={() => onChange(preset)}
