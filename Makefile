@@ -20,17 +20,15 @@ BOLD  := \033[1m
 # Ports
 MOCK_PORT   := 18091
 GATEWAY_PORT:= 19090
-BRIDGE_PORT := 3000
 UI_PORT     := 5173
 
 # PID files
 PID_DIR     := .pids
 MOCK_PID    := $(PID_DIR)/mock-api.pid
 GATEWAY_PID := $(PID_DIR)/gateway.pid
-BRIDGE_PID  := $(PID_DIR)/bridge.pid
 UI_PID      := $(PID_DIR)/ui.pid
 
-.PHONY: all install mock gateway bridge ui agent agent-mock stop status test clean demo logs help mainnet mainnet-stop mainnet-demo
+.PHONY: all install mock gateway ui agent agent-mock stop status test clean demo logs help mainnet mainnet-stop mainnet-demo
 
 help: ## Tampilkan help
 	@echo ""
@@ -79,12 +77,6 @@ gateway: $(PID_DIR) ## Start gateway
 	@sleep 2
 	@curl -sf http://localhost:$(GATEWAY_PORT)/health > /dev/null 2>&1 && echo "$(GREEN)✓ gateway running (PID $$(cat $(GATEWAY_PID)))$(RESET)" || echo "$(RED)✗ gateway failed to start$(RESET)"
 
-bridge: $(PID_DIR) ## Start wallet bridge
-	@echo "$(CYAN)Starting wallet bridge on :$(BRIDGE_PORT)...$(RESET)"
-	@cd agent && npx tsx src/wallet/wallet-bridge.ts > ../$(PID_DIR)/bridge.log 2>&1 & echo $$! > $(BRIDGE_PID)
-	@sleep 2
-	@curl -sf http://localhost:$(BRIDGE_PORT)/status > /dev/null 2>&1 && echo "$(GREEN)✓ wallet bridge running (PID $$(cat $(BRIDGE_PID)))$(RESET)" || echo "$(YELLOW)⚠ wallet bridge may still be starting$(RESET)"
-
 ui: $(PID_DIR) ## Start React UI (Vite dev server)
 	@echo "$(CYAN)Starting React UI on :$(UI_PORT)...$(RESET)"
 	@cd ui && npx vite --host > ../$(PID_DIR)/ui.log 2>&1 & echo $$! > $(UI_PID)
@@ -99,7 +91,6 @@ all: $(PID_DIR) ## Start semua services
 	@echo ""
 	@$(MAKE) mock
 	@$(MAKE) gateway
-	@$(MAKE) bridge
 	@$(MAKE) ui
 	@echo ""
 	@echo "$(BOLD)$(GREEN)All services started!$(RESET)"
@@ -108,14 +99,14 @@ all: $(PID_DIR) ## Start semua services
 	@echo "  Gateway:       http://localhost:$(GATEWAY_PORT)/health"
 	@echo "  Dashboard:     http://localhost:$(GATEWAY_PORT)/dashboard"
 	@echo "  React UI:      http://localhost:$(UI_PORT)"
-	@echo "  Wallet Bridge: http://localhost:$(BRIDGE_PORT)"
 	@echo ""
+	@echo "$(YELLOW)Open the React UI, connect MetaMask, grant permissions, then run the agent.$(RESET)"
 	@echo "$(YELLOW)Run 'make agent' or 'make agent-mock' to start the agent.$(RESET)"
 	@echo ""
 
 stop: ## Stop semua services
 	@echo "$(YELLOW)Stopping all services...$(RESET)"
-	@for pidfile in $(MOCK_PID) $(GATEWAY_PID) $(BRIDGE_PID) $(UI_PID); do \
+	@for pidfile in $(MOCK_PID) $(GATEWAY_PID) $(UI_PID); do \
 		if [ -f "$$pidfile" ]; then \
 			pid=$$(cat $$pidfile 2>/dev/null); \
 			if [ -n "$$pid" ] && kill -0 $$pid 2>/dev/null; then \
@@ -127,7 +118,7 @@ stop: ## Stop semua services
 		fi; \
 	done
 	@# Also kill any lingering processes on our ports
-	@for port in $(MOCK_PORT) $(GATEWAY_PORT) $(BRIDGE_PORT) $(UI_PORT); do \
+	@for port in $(MOCK_PORT) $(GATEWAY_PORT) $(UI_PORT); do \
 		pid=$$(lsof -ti :$$port 2>/dev/null); \
 		if [ -n "$$pid" ]; then \
 			kill $$pid 2>/dev/null && echo "$(GREEN)✓ Killed process on port $$port$(RESET)"; \
@@ -143,11 +134,10 @@ status: ## Cek status semua services
 	@echo ""
 	@echo "$(BOLD)$(CYAN)═══ AgentToll — Service Status ═══$(RESET)"
 	@echo ""
-	@for name in "mock-api" "gateway" "bridge" "react-ui"; do \
+	@for name in "mock-api" "gateway" "react-ui"; do \
 		case $$name in \
 			mock-api)   port=$(MOCK_PORT);; \
 			gateway)    port=$(GATEWAY_PORT);; \
-			bridge)     port=$(BRIDGE_PORT);; \
 			react-ui)   port=$(UI_PORT);; \
 		esac; \
 		if curl -sf http://localhost:$$port > /dev/null 2>&1; then \
@@ -164,9 +154,6 @@ logs: ## Tampilkan log semua services
 	@echo ""
 	@echo "$(CYAN)═══ gateway.log ═══$(RESET)"
 	@[ -f $(PID_DIR)/gateway.log ] && cat $(PID_DIR)/gateway.log | tail -20 || echo "(no log)"
-	@echo ""
-	@echo "$(CYAN)═══ bridge.log ═══$(RESET)"
-	@[ -f $(PID_DIR)/bridge.log ] && cat $(PID_DIR)/bridge.log | tail -20 || echo "(no log)"
 	@echo ""
 	@echo "$(CYAN)═══ ui.log ═══$(RESET)"
 	@[ -f $(PID_DIR)/ui.log ] && cat $(PID_DIR)/ui.log | tail -20 || echo "(no log)"
@@ -237,10 +224,6 @@ clean: stop ## Stop semua + hapus build artifacts
 dashboard: ## Open dashboard in browser
 	@open http://localhost:$(GATEWAY_PORT)/dashboard 2>/dev/null || xdg-open http://localhost:$(GATEWAY_PORT)/dashboard 2>/dev/null || echo "Open manually: http://localhost:$(GATEWAY_PORT)/dashboard"
 
-# Wallet bridge shortcut
-wallet: ## Open wallet bridge in browser
-	@open http://localhost:$(BRIDGE_PORT) 2>/dev/null || xdg-open http://localhost:$(BRIDGE_PORT) 2>/dev/null || echo "Open manually: http://localhost:$(BRIDGE_PORT)"
-
 # ── Mainnet (Base) ─────────────────────────────────────────
 
 mainnet: ## Switch agent ke mainnet config (backup testnet .env)
@@ -262,7 +245,7 @@ mainnet: ## Switch agent ke mainnet config (backup testnet .env)
 	@echo "    export USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 	@echo ""
 	@echo "$(YELLOW)Then: make stop && make all$(RESET)"
-	@echo "$(YELLOW)Re-grant permissions on Base mainnet via wallet bridge$(RESET)"
+	@echo "$(YELLOW)Re-grant permissions on Base mainnet via React UI (http://localhost:5173)$(RESET)"
 
 mainnet-stop: ## Stop services + switch balik ke testnet
 	@$(MAKE) stop

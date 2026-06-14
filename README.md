@@ -8,7 +8,7 @@
 
 Built for the **MetaMask Smart Accounts Kit × 1Shot API × Venice AI Dev Cook Off**
 
-[![Base](https://img.shields.io/badge/Chain-Base_Sepolia-0052FF)](https://docs.base.org)
+[![Base](https://img.shields.io/badge/Chain-Base-0052FF)](https://docs.base.org)
 [![MetaMask Kit](https://img.shields.io/badge/MetaMask-Smart_Accounts_Kit-v1.6.0-FF6B00)](https://docs.metamask.io/smart-accounts-kit/)
 [![Venice AI](https://img.shields.io/badge/AI-Venice_API-7C3AED)](https://venice.ai)
 [![1Shot](https://img.shields.io/badge/Relayer-1Shot_Permissionless-10B981)](https://1shotapi.com)
@@ -113,11 +113,11 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 ```mermaid
 graph TB
     subgraph Setup["Setup (One-Time)"]
-        Browser["Browser<br/>localhost:3000"]
-        MM["MetaMask Flask<br/>Smart Accounts Kit"]
+        Browser["React UI<br/>localhost:5173"]
+        MM["MetaMask<br/>Smart Accounts Kit"]
         Browser -->|"Grant ERC-7715"| MM
-        MM -->|"permissionsContext"| Bridge["Wallet Bridge"]
-        Bridge -->|"Store"| Ctx[("context.json")]
+        MM -->|"permissionsContext"| GW2["Gateway :19090"]
+        GW2 -->|"Store"| Ctx[("agent-config")]
     end
 
     subgraph Execution["Autonomous Execution"]
@@ -127,7 +127,7 @@ graph TB
         Agent -->|"reason"| Venice["Venice AI"]
         Venice -->|"pay / skip"| Agent
         Agent -->|"transfer + context"| Relayer["1Shot Relayer"]
-        Relayer -->|"gasless tx"| Chain["Base Sepolia"]
+        Relayer -->|"gasless tx"| Chain["Base"]
         Agent -->|"webhook"| GW
         GW -->|"proxy"| API["Mock API :18091"]
         GW -->|"data"| Agent
@@ -138,7 +138,7 @@ graph TB
         Dashboard -->|"tx links"| Explorer["BaseScan"]
     end
 
-    Bridge -.->|"GET /context"| Agent
+    GW2 -.->|"GET /api/agent-config"| Agent
 ```
 
 ### Payment Flow
@@ -220,9 +220,9 @@ AGENT_WALLET=0xYourMetaMaskAddress
 
 # Optional (defaults work for local dev)
 GATEWAY_URL=http://localhost:19090
-PAYMENT_MODE=live          # live | bridge | stub
-RPC_URL=https://sepolia.base.org
-EXPLORER_URL=https://sepolia.basescan.org
+PAYMENT_MODE=live          # live | stub
+RPC_URL=https://mainnet.base.org
+EXPLORER_URL=https://basescan.org
 ```
 
 Gateway config via environment:
@@ -232,7 +232,7 @@ export GATEWAY_SECRET=your-secret               # shared with proxy
 export MOCK_API_URL=http://localhost:18091
 ```
 
-### 3. Start Services (3 terminals)
+### 3. Start Services
 
 ```bash
 # Terminal 1 — Data provider
@@ -243,18 +243,18 @@ cd mock-api && go run .
 cd gateway && go run .
 # → gateway listening on :19090
 
-# Terminal 3 — Wallet Bridge
-cd agent && npx tsx src/wallet/wallet-bridge.ts
-# → wallet bridge listening on :3000
+# Terminal 3 — React UI
+cd ui && npm run dev
+# → vite listening on :5173
 ```
 
 ### 4. Setup MetaMask (browser)
 
-1. Open **http://localhost:3000** in a browser with MetaMask Flask installed
-2. Switch MetaMask to **Base Sepolia** network
-3. Click **Connect MetaMask Flask**
-4. Click **Grant Permissions (ERC-7715)** — MetaMask popup shows spending cap
-5. Approve — permissionsContext stored for autonomous use
+1. Open **http://localhost:5173** in a browser with MetaMask installed
+2. Switch MetaMask to **Base** network
+3. Click the wallet button (top right) → **Connect MetaMask**
+4. Go to **Agent Setup** → set budget → click **Grant Permissions (ERC-7715)**
+5. Approve — MetaMask popup shows spending cap, permissionsContext stored in gateway
 
 ### 5. Run Agent
 
@@ -279,10 +279,10 @@ Open **http://localhost:19090/dashboard** to see revenue, purchases, and transac
 | **Gateway** | Go | x402 middleware, payment authorization, webhook, provider dashboard |
 | **Mock API** | Go | Paid content endpoints with rich market data (3 reports) |
 | **Agent** | TypeScript + Venice AI | Reasoning engine with function calling, budget management, synthesis |
-| **Wallet Bridge** | TypeScript + WebSocket | MetaMask connection, permission context storage |
+| **React UI** | TypeScript + wagmi | MetaMask connection, permission grant, provider dashboard, crawl control |
 | **Smart Accounts** | MetaMask Kit v1.6.0 | ERC-7715 permissions (erc20-token-periodic), ERC-7710 delegation |
 | **Relayer** | 1Shot Permissionless API | Gasless execution via JSON-RPC, webhook confirmation |
-| **Chain** | Base Sepolia / Base | USDC (Circle) payments, 6-decimal precision |
+| **Chain** | Base / Base Sepolia | USDC (Circle) payments, 6-decimal precision |
 
 ---
 
@@ -310,14 +310,12 @@ Open **http://localhost:19090/dashboard** to see revenue, purchases, and transac
 │   ├── src/utils/format.ts   # Terminal formatting: colors, budget meter, reasoning boxes
 │   ├── src/tools/
 │   │   ├── fetchResource.ts  # HTTP client with 15s timeout, 402 detection
-│   │   └── payX402.ts        # 3 payment modes: live (1Shot) / bridge (browser) / stub (webhook)
+│   │   └── payX402.ts        # 2 payment modes: live (1Shot) / stub (webhook)
 │   └── src/wallet/
 │       ├── erc20.ts          # ERC-20 transfer calldata encoder (viem)
-│       ├── relayer.ts        # 1Shot JSON-RPC client (getFeeData, send7710, pollStatus)
-│       ├── permissions.ts    # ERC-7715 grantPermissions via MetaMask Smart Accounts Kit
-│       ├── wallet-bridge.ts  # WebSocket bridge server (CLI ↔ browser)
-│       ├── wallet-bridge-app.ts  # Browser MetaMask integration (erc7715ProviderActions)
-│       └── wallet-bridge.html    # Browser UI with 3-step flow indicator
+│       └── relayer.ts        # 1Shot JSON-RPC client (getFeeData, send7710, pollStatus)
+├── ui/                       # React + wagmi — control panel & dashboards
+│   └── src/pages/AgentBridge.tsx  # MetaMask connect + ERC-7715 grant (Smart Accounts Kit)
 └── description.md            # HackQuest submission description
 ```
 
@@ -334,7 +332,7 @@ The gateway implements the [x402](https://x402.org) HTTP-native pay-per-request 
   "error": "X-PAYMENT header is required",
   "accepts": [{
     "scheme": "exact",
-    "network": "base-sepolia",
+    "network": "base",
     "maxAmountRequired": "600000",
     "resource": "/reports/deep-dive",
     "description": "Asia Crypto Sentiment — Deep Dive Analysis",

@@ -5,7 +5,7 @@
  * - Venice AI API (model, key, URL)
  * - Blockchain (Base Sepolia testnet / Base mainnet)
  * - Wallet addresses (agent = pembayar, provider = penerima)
- * - Payment mode (stub/bridge/live)
+ * - Payment mode (stub/live)
  * - 1Shot relayer URL
  *
  * Semua nilai bisa di-override via .env file
@@ -60,16 +60,9 @@ export const config = {
   providerWallet: process.env.PROVIDER_WALLET || "0xPROVIDER_WALLET",
 
   // === PAYMENT MODE ===
-  // "stub"  = langsung panggil webhook, tanpa blockchain (untuk testing)
-  // "bridge" = kirim ke browser, user klik Approve manual (untuk demo interaktif)
-  // "live"   = otonom via 1Shot relayer + ERC-7710 (tujuan akhir)
-  paymentMode: (process.env.PAYMENT_MODE || "live") as "stub" | "bridge" | "live",
-
-  // Wallet bridge URL — server WebSocket yang menghubungkan CLI agent dengan browser MetaMask
-  // Digunakan untuk:
-  // 1. Setup: grant permissions (MetaMask popup)
-  // 2. Fallback: manual approval jika relayer gagal
-  bridgeUrl: process.env.BRIDGE_URL || "http://localhost:3000",
+  // "stub" = langsung panggil webhook, tanpa blockchain (untuk testing)
+  // "live" = otonom via 1Shot relayer + ERC-7710 (mode utama)
+  paymentMode: (process.env.PAYMENT_MODE || "live") as "stub" | "live",
 
   // === BUDGET ===
   // Budget agent: fetched from gateway API (set via React UI)
@@ -161,9 +154,9 @@ export function validateConfig(): string[] {
     warnings.push("PROVIDER_WALLET not set — using placeholder, payments will go to invalid address");
   }
 
-  const validModes = ["stub", "bridge", "live"];
+  const validModes = ["stub", "live"];
   if (!validModes.includes(config.paymentMode)) {
-    warnings.push(`PAYMENT_MODE="${config.paymentMode}" is invalid — must be stub, bridge, or live`);
+    warnings.push(`PAYMENT_MODE="${config.paymentMode}" is invalid — must be stub or live`);
   }
 
   if (!/^0x[a-fA-F0-9]{40}$/.test(config.usdcAddress)) {

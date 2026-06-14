@@ -3,24 +3,20 @@
  *
  * File ini menangani seluruh flow pembayaran ketika agent menemukan x402 paywall.
  *
- * Ada 3 mode pembayaran:
+ * Ada 2 mode pembayaran:
  *
- * 1. LIVE (tujuan akhir):
- *    Agent mengambil permissionsContext (dari MetaMask grant) lalu mengirim
- *    ke 1Shot relayer untuk eksekusi gasless on-chain via ERC-7710.
+ * 1. LIVE (mode utama):
+ *    Agent mengambil permissionsContext (dari MetaMask grant di React UI) lalu
+ *    mengirim ke 1Shot relayer untuk eksekusi gasless on-chain via ERC-7710.
  *    TANPA popup MetaMask — fully autonomous.
  *
- * 2. BRIDGE (interaktif):
- *    Agent kirim request ke browser via WebSocket.
- *    User klik Approve di browser, baru pembayaran diproses.
- *    Berguna untuk demo yang ingin tunjukkan interaksi MetaMask.
- *
- * 3. STUB (testing):
+ * 2. STUB (testing):
  *    Langsung panggil webhook gateway tanpa blockchain.
  *    Untuk development dan testing tanpa wallet.
  *
  * Flow utama (live mode):
- *   Agent → encodeTransfer(USDC, provider) → 1Shot relayer → on-chain tx
+ *   React UI grant permissions → gateway stores context
+ *   → Agent → encodeTransfer(USDC, provider) → 1Shot relayer → on-chain tx
  *   → webhook gateway → agent dapat data
  */
 
@@ -37,12 +33,12 @@ interface PayResult {
   error?: string;
 }
 
-// Struktur data yang disimpan bridge server setelah MetaMask grant
+// Struktur data permissionsContext (disimpan di gateway via React UI setelah MetaMask grant)
 interface PermissionsContext {
   permissionsContext: string; // hex-encoded delegation data
   wallet: string;            // address yang grant
   grantedAt: string;         // timestamp
-  chainId: number;           // 84532 (Base Sepolia)
+  chainId: number;           // 8453 (Base) atau 84532 (Base Sepolia)
 }
 
 // Cache agar tidak fetch berulang kali
@@ -80,20 +76,6 @@ async function getPermissionsContext(): Promise<PermissionsContext | null> {
   } catch (err: any) {
     console.error(`[payX402] failed to fetch from gateway: ${err.message}`);
   }
-
-  // Source 2: Bridge server (legacy fallback)
-  try {
-    const res = await fetch(`${config.bridgeUrl}/permissions-context`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.permissionsContext) {
-      cachedContext = data;
-      console.log(`[payX402] loaded permissionsContext from bridge: wallet=${data.wallet}`);
-      return data;
-    }
-  } catch (err: any) {
-    console.error(`[payX402] failed to fetch from bridge: ${err.message}`);
-  }
   return null;
 }
 
@@ -109,8 +91,6 @@ export async function payX402(
   switch (config.paymentMode) {
     case "live":
       return payX402Live(resource, amount, asset, payTo);
-    case "bridge":
-      return payX402Bridge(resource, amount, asset, payTo);
     default:
       return payX402Stub(resource, amount, asset, payTo);
   }
@@ -263,46 +243,6 @@ async function payX402Live(
     console.log(`[payX402][live] falling back to stub webhook`);
     return payX402Stub(resource, amount, asset, payTo);
   }
-}
-
-// ======================================================================
-// MODE: BRIDGE — Manual approval via browser MetaMask
-// ======================================================================
-//
-// Agent kirim request ke bridge server → WebSocket ke browser
-// → User klik Approve → pembayaran diproses
-// Mode ini untuk demo interaktif di mana penilai bisa lihat popup MetaMask.
-async function payX402Bridge(
-  resource: string,
-  amount: string,
-  asset: string,
-  payTo: string
-): Promise<PayResult> {
-  const cost = (Number(amount) / 1e6).toFixed(2);
-  console.log(`[payX402][bridge] requesting browser approval for ${cost} USDC (${resource})`);
-
-  const id = `bridge-${Date.now()}`;
-
-  // Kirim HTTP POST ke bridge server
-  const res = await fetch(`${config.bridgeUrl}/request-payment`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, resource, amount, asset, payTo, network: config.chainId === 8453 ? "base" : "base-sepolia" }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    return { success: false, error: `bridge error: ${res.status} ${text}` };
-  }
-
-  // Response datang setelah user klik Approve (atau timeout 60 detik)
-  const result = await res.json();
-  if (result.success) {
-    console.log(`[payX402][bridge] payment confirmed via MetaMask! txHash: ${result.txHash}`);
-  } else {
-    console.log(`[payX402][bridge] payment failed: ${result.error}`);
-  }
-  return result;
 }
 
 // ======================================================================
