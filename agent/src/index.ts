@@ -1,11 +1,11 @@
 /**
- * index.ts — Entry point agent
+ * index.ts — Agent entry point
  *
- * Alur:
- * 1. Validate config & warn about missing values
- * 2. Parse query dari CLI argument
- * 3. Pre-flight check: pastikan permissionsContext ada (untuk live mode)
- * 4. Jalankan agent loop (Venice AI reasoning + payment + data retrieval)
+ * Flow:
+ * 1. Validate config and warn about missing values
+ * 2. Parse the query from the CLI argument
+ * 3. Pre-flight check: ensure a permissionsContext is available (for live mode)
+ * 4. Run the agent loop (Venice AI reasoning + payment + data retrieval)
  */
 
 import { runAgent } from "./brain.js";
@@ -39,7 +39,7 @@ async function main() {
     }
   }
 
-  // Fetch agent config from gateway (set via React UI)
+  // Fetch agent config from the gateway (set via the React UI)
   const agentCfg = await fetchAgentConfigFromGateway();
   if (agentCfg) {
     if (agentCfg.budgetUSD) {
@@ -53,17 +53,17 @@ async function main() {
     }
   }
 
-  // Fetch provider wallet from gateway (set via MetaMask login)
+  // Fetch the provider wallet from the gateway (set via MetaMask login)
   const providerWallet = await fetchProviderWalletFromGateway();
   if (providerWallet) {
     config.providerWallet = providerWallet;
     console.log(fmt.infoTag("Provider Wallet (from UI)", config.providerWallet));
   }
 
-  // Pre-flight: cek apakah permissionsContext sudah tersedia
+  // Pre-flight: verify a permissionsContext is available
   const ready = await initPaymentContext();
   if (!ready) {
-    console.log(fmt.color("\n  ⚠ No permissionsContext — payments will fail until you grant permissions in the UI\n", "\x1b[93m"));
+    console.log(fmt.color("\n  ⚠ No permissionsContext — grant permissions in the UI to enable payments\n", "\x1b[93m"));
   }
 
   await runAgent(query);

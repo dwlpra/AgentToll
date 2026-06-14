@@ -1,16 +1,16 @@
 /**
  * relayer.ts — 1Shot Permissionless Relayer client
  *
- * 1Shot relayer adalah service yang mengeksekusi transaksi ERC-7710
- * atas nama user SECARA GASLESS (user tidak bayar gas).
+ * The 1Shot relayer executes ERC-7710 transactions on the user's behalf
+ * GASLESSLY (the user never pays gas).
  *
- * Cara kerja:
- * 1. User grant permissions via MetaMask (ERC-7715) → dapat permissionsContext
- * 2. Agent kirim permissionsContext + calldata ke relayer
- * 3. Relayer decode delegation dari context
- * 4. Relayer build & submit transaction ke blockchain
- * 5. Relayer bayar gas (sponsor)
- * 6. Relayer notify webhook saat selesai
+ * How it works:
+ * 1. The user grants permissions via MetaMask (ERC-7715) → receives a permissionsContext
+ * 2. The agent sends permissionsContext + calldata to the relayer
+ * 3. The relayer decodes the delegation from the context
+ * 4. The relayer builds and submits the transaction to the blockchain
+ * 5. The relayer pays the gas (sponsor)
+ * 6. The relayer notifies the webhook when finished
  *
  * API: JSON-RPC over HTTP
  * Testnet: https://relayer.1shotapi.dev/relayers
@@ -21,30 +21,30 @@ import { config } from "../config.js";
 
 // === RESPONSE TYPES ===
 
-// Data biaya dari relayer
+// Fee data returned by the relayer
 interface FeeData {
-  gasPrice: string;  // gas price saat ini
+  gasPrice: string;  // current gas price
   rate: number;      // exchange rate
   minFee: string;    // minimum fee
-  expiry: number;    // waktu expiry fee quote
-  context: string;   // context untuk transaction
+  expiry: number;    // fee-quote expiry timestamp
+  context: string;   // context to attach to the transaction
 }
 
-// Status task relayer
+// Relayer task status
 interface RelayerTask {
   taskId: string;
   status: string;    // "pending" | "confirmed" | "success" | "failed" | "reverted"
-  txHash?: string;   // hash transaksi on-chain (tersedia setelah confirmed)
+  txHash?: string;   // on-chain transaction hash (available after confirmation)
 }
 
 // JSON-RPC request ID counter
 let rpcId = 0;
 
 /**
- * Generic JSON-RPC call ke 1Shot relayer.
+ * Generic JSON-RPC call to the 1Shot relayer.
  *
- * 1Shot menggunakan JSON-RPC protocol (sama seperti Ethereum RPC).
- * Setiap call berisi: method name + params, dan mengembalikan result atau error.
+ * 1Shot uses the JSON-RPC protocol (same as Ethereum RPC).
+ * Each call carries a method name + params and returns either a result or an error.
  */
 async function rpcCall(method: string, params: any[]): Promise<any> {
   let res: Response;
@@ -76,39 +76,39 @@ async function rpcCall(method: string, params: any[]): Promise<any> {
 }
 
 /**
- * OneShotRelayer — Client untuk berinteraksi dengan 1Shot relayer API.
+ * OneShotRelayer — Client for interacting with the 1Shot relayer API.
  *
- * Method yang tersedia:
- * - getFeeData() → biaya dan gas price
- * - send7710Transaction() → kirim transaksi ERC-7710 untuk eksekusi gasless
- * - getStatus() → cek status task
- * - pollStatus() → tunggu sampai confirmed/failed
+ * Available methods:
+ * - getFeeData()           → fees and current gas price
+ * - send7710Transaction()  → submit an ERC-7710 transaction for gasless execution
+ * - getStatus()            → check the status of a task
+ * - pollStatus()           → wait until a task reaches a final state
  */
 export class OneShotRelayer {
 
   /**
-   * Ambil data biaya untuk sebuah transaksi.
-   * Return fee quote yang valid untuk beberapa saat.
+   * Fetch fee data for a transaction.
+   * Returns a fee quote that remains valid for a short period.
    */
   async getFeeData(chainId: string, tokenAddress: string): Promise<FeeData> {
     return rpcCall("relayer_getFeeData", [{ chainId, tokenAddress }]);
   }
 
   /**
-   * Kirim transaksi ERC-7710 ke relayer untuk eksekusi gasless.
+   * Submit an ERC-7710 transaction to the relayer for gasless execution.
    *
-   * Ini adalah method utama — agent memanggil ini untuk membayar resource.
+   * This is the primary method — the agent calls it to pay for a resource.
    *
-   * Parameter:
+   * Parameters:
    * - chainId: hex format (e.g. "0x14a34")
-   * - from: smart account address (wallet agent)
+   * - from: smart account address (the agent wallet)
    * - to: USDC contract address
    * - data: encoded transfer calldata
-   * - permissionContext: delegation data dari MetaMask grant
-   * - context: fee data context dari getFeeData()
-   * - destinationUrl: webhook untuk notifikasi konfirmasi
+   * - permissionContext: delegation data from the MetaMask grant
+   * - context: fee-data context returned by getFeeData()
+   * - destinationUrl: webhook URL for confirmation notifications
    *
-   * Return: taskId untuk tracking status
+   * Returns: a taskId for status tracking.
    */
   async send7710Transaction(params: {
     chainId: string;
@@ -131,7 +131,7 @@ export class OneShotRelayer {
   }
 
   /**
-   * Cek status terkini dari sebuah task.
+   * Fetch the current status of a task.
    */
   async getStatus(taskId: string): Promise<RelayerTask> {
     const result = await rpcCall("relayer_getStatus", [taskId]);
@@ -143,10 +143,10 @@ export class OneShotRelayer {
   }
 
   /**
-   * Poll status sampai final (confirmed/success/failed/reverted)
-   * atau sampai timeout.
+   * Poll the status until it reaches a final state
+   * (confirmed/success/failed/reverted) or the timeout elapses.
    *
-   * Dipakai setelah send7710Transaction untuk menunggu konfirmasi on-chain.
+   * Used after send7710Transaction to wait for on-chain confirmation.
    */
   async pollStatus(taskId: string, timeoutMs: number): Promise<RelayerTask> {
     const start = Date.now();
@@ -157,10 +157,10 @@ export class OneShotRelayer {
           return status;
         }
       } catch (err) {
-        // Network error during poll — log and continue retrying
+        // Network error during poll — log and keep retrying
         console.error(`[relayer] poll error for ${taskId}: ${err instanceof Error ? err.message : err}`);
       }
-      // Tunggu 2 detik sebelum poll lagi (jangan spam relayer)
+      // Wait 2 seconds before the next poll to avoid hammering the relayer
       await new Promise((r) => setTimeout(r, 2000));
     }
     return { taskId, status: "timeout" };

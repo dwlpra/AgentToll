@@ -1,36 +1,36 @@
 /**
- * config.ts — Konfigurasi utama seluruh agent
+ * config.ts — Central agent configuration
  *
- * File ini memuat semua konfigurasi yang dibutuhkan agent:
- * - Venice AI API (model, key, URL)
- * - Blockchain (Base Sepolia testnet / Base mainnet)
- * - Wallet addresses (agent = pembayar, provider = penerima)
- * - Payment mode (live — real on-chain)
- * - 1Shot relayer URL
+ * Holds all configuration required by the agent:
+ * - Venice AI API (model, key, base URL)
+ * - Blockchain (Base mainnet / Base Sepolia)
+ * - Wallet addresses (agent = payer, provider = payee)
+ * - Payment mode (live — on-chain execution)
+ * - 1Shot relayer endpoint
  *
- * Semua nilai bisa di-override via .env file
+ * Every value can be overridden through the .env file.
  */
 
 import { config as dotenvConfig } from "dotenv";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
-// ESM tidak punya __dirname, jadi kita buat manual dari import.meta.url
+// ESM has no __dirname; derive it from import.meta.url.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load .env dari folder agent/, bukan dari CWD.
-// Ini penting karena agent bisa dijalankan dari folder manapun.
+// Always load .env from the agent/ directory regardless of the current
+// working directory, so the agent can be launched from anywhere.
 dotenvConfig({ path: resolve(__dirname, "../.env") });
 
 export const config = {
   // === GATEWAY (x402 paywall server) ===
-  // Gateway adalah server yang memproteksi resource di belakang x402 paywall.
-  // Ketika agent fetch resource, gateway merespons 402 + info pembayaran.
+  // The gateway protects resources behind an x402 paywall. When the agent
+  // requests a resource it responds with 402 plus the payment requirements.
   gatewayUrl: process.env.GATEWAY_URL || "http://localhost:19090",
 
-  // === VENICE AI (LLM untuk reasoning) ===
-  // Venice digunakan sebagai "otak" agent — memutuskan resource mana yang worth dibeli.
-  // API-nya OpenAI-compatible, jadi bisa pakai openai SDK.
+  // === VENICE AI (reasoning LLM) ===
+  // Venice is the agent's "brain": it decides which resources are worth buying.
+  // The API is OpenAI-compatible, so the openai SDK is used directly.
   veniceApiKey: process.env.VENICE_API_KEY || "",
   veniceBaseUrl: "https://api.venice.ai/api/v1",
   veniceModel: process.env.VENICE_MODEL || "z-ai-glm-5-turbo",
@@ -38,7 +38,7 @@ export const config = {
   // === BLOCKCHAIN ===
   // Base Mainnet: chainId=8453, chainIdHex=0x2105 (DEFAULT)
   // Base Sepolia (testnet): chainId=84532, chainIdHex=0x14a34
-  // Override via CHAIN_ID env var: "8453" (mainnet) or "84532" (testnet)
+  // Override via CHAIN_ID: "8453" (mainnet) or "84532" (testnet)
   chainId: Number(process.env.CHAIN_ID) || 8453,
   chainIdHex: Number(process.env.CHAIN_ID) === 84532 ? "0x14a34" : "0x2105",
   rpcUrl: process.env.RPC_URL || (Number(process.env.CHAIN_ID) === 84532 ? "https://sepolia.base.org" : "https://mainnet.base.org"),
@@ -51,37 +51,37 @@ export const config = {
     : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
 
   // === WALLET ===
-  // Agent wallet: EOA user yang di-upgrade jadi smart account via EIP-7702
-  // Wallet ini membayar USDC untuk resource
+  // Agent wallet: the EOA upgraded to a smart account via EIP-7702.
+  // This wallet pays USDC for resources.
   agentWallet: process.env.AGENT_WALLET || "0xAGENT_WALLET",
 
-  // Provider wallet: wallet penyedia konten yang MENERIMA pembayaran
-  // Ini adalah wallet gateway (content provider)
+  // Provider wallet: the content provider that RECEIVES payments.
+  // This is the gateway's wallet (content provider side).
   providerWallet: process.env.PROVIDER_WALLET || "0xPROVIDER_WALLET",
 
   // === PAYMENT MODE ===
-  // "live" = otonom via 1Shot relayer + ERC-7710 (mode tunggal — real on-chain)
+  // "live" = autonomous execution via the 1Shot relayer + ERC-7710 (single mode).
   paymentMode: (process.env.PAYMENT_MODE || "live") as "live",
 
   // === BUDGET ===
-  // Budget agent: fetched from gateway API (set via React UI)
-  // Falls back to env var or $1.00 default
+  // Agent budget: fetched from the gateway API (configured via the React UI).
+  // Falls back to the env var or a $1.00 default.
   budgetUSD: Number(process.env.BUDGET_USD) || 1.00,
   budgetUnits: String(Math.round((Number(process.env.BUDGET_USD) || 1.00) * 1e6)),
 
-  // Block explorer untuk verifikasi transaksi
+  // Block explorer for transaction verification.
   // Testnet: https://sepolia.basescan.org
   // Mainnet: https://basescan.org
   explorerUrl: process.env.EXPLORER_URL || "https://basescan.org",
 
   // === 1SHOT RELAYER ===
-  // Relayer yang mengeksekusi transaksi ERC-7710 atas nama user (gasless)
+  // Executes ERC-7710 transactions on the user's behalf (gasless).
   // .com = mainnet (DEFAULT), .dev = testnet
   relayerBaseUrl: process.env.RELAYER_URL || "https://relayer.1shotapi.com/relayers",
 };
 
 /**
- * Fetch agent config from gateway API (set via React UI).
+ * Fetch agent config from the gateway API (configured via the React UI).
  * Returns partial overrides for budget, expiry, and permissionsContext.
  */
 export async function fetchAgentConfigFromGateway(): Promise<{
@@ -109,8 +109,8 @@ export async function fetchAgentConfigFromGateway(): Promise<{
 }
 
 /**
- * Fetch provider wallet from gateway API (set dynamically via MetaMask login).
- * This replaces the hardcoded PROVIDER_WALLET from .env.
+ * Fetch the provider wallet from the gateway API (set dynamically via MetaMask login).
+ * Replaces the hardcoded PROVIDER_WALLET from .env.
  */
 export async function fetchProviderWalletFromGateway(): Promise<string | null> {
   try {
@@ -127,8 +127,8 @@ export async function fetchProviderWalletFromGateway(): Promise<string | null> {
 }
 
 /**
- * Helper: buat link explorer untuk sebuah transaction hash.
- * Digunakan di log agent agar user bisa klik dan verifikasi di block explorer.
+ * Build a block-explorer link for a transaction hash.
+ * Used in agent logs so the user can click through and verify the transaction.
  */
 export function explorerTxLink(txHash: string): string {
   return `${config.explorerUrl}/tx/${txHash}`;
@@ -136,7 +136,7 @@ export function explorerTxLink(txHash: string): string {
 
 /**
  * Validate critical config values at startup.
- * Returns warnings array — empty if all good.
+ * Returns a warnings array — empty when everything is configured correctly.
  */
 export function validateConfig(): string[] {
   const warnings: string[] = [];
@@ -150,7 +150,7 @@ export function validateConfig(): string[] {
   }
 
   if (config.providerWallet === "0xPROVIDER_WALLET") {
-    warnings.push("PROVIDER_WALLET not set — using placeholder, payments will go to invalid address");
+    warnings.push("PROVIDER_WALLET not set — using placeholder, payments will go to an invalid address");
   }
 
   const validModes = ["live"];
