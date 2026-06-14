@@ -50,3 +50,5 @@ mock
 
 # UI build output
 ui/dist/ 
+# Venice API reference doc (pasted, not project source)
+model.md
