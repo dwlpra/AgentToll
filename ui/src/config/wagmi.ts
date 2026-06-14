@@ -2,7 +2,7 @@ import { http, createConfig } from 'wagmi'
 import { baseSepolia, base } from 'wagmi/chains'
 import { injected } from 'wagmi/connectors'
 
-export const chains = [baseSepolia, base] as const
+const chains = [baseSepolia, base] as const
 
 export const config = createConfig({
   chains,

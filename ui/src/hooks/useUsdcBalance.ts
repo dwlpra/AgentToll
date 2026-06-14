@@ -17,7 +17,6 @@ export function useUsdcBalance() {
 
   return {
     balance: balance ? formatUsdc(balance as bigint) : '0.00',
-    rawBalance: balance as bigint | undefined,
     refetch,
   }
 }

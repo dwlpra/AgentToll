@@ -21,15 +21,6 @@ import { config } from "../config.js";
 
 // === RESPONSE TYPES ===
 
-// Info tentang chain yang didukung relayer
-interface RelayerCapabilities {
-  [chainId: string]: {
-    feeCollector: string;   // address yang collect fee
-    targetAddress: string;  // address kontrak relayer di chain tersebut
-    tokens: { address: string; symbol: string; decimals: string }[];
-  };
-}
-
 // Data biaya dari relayer
 interface FeeData {
   gasPrice: string;  // gas price saat ini
@@ -88,7 +79,6 @@ async function rpcCall(method: string, params: any[]): Promise<any> {
  * OneShotRelayer — Client untuk berinteraksi dengan 1Shot relayer API.
  *
  * Method yang tersedia:
- * - getCapabilities() → info chain & token yang didukung
  * - getFeeData() → biaya dan gas price
  * - send7710Transaction() → kirim transaksi ERC-7710 untuk eksekusi gasless
  * - getStatus() → cek status task
@@ -97,35 +87,11 @@ async function rpcCall(method: string, params: any[]): Promise<any> {
 export class OneShotRelayer {
 
   /**
-   * Cek chain dan token apa saja yang didukung relayer.
-   * Berguna untuk debugging dan menemukan targetAddress.
-   */
-  async getCapabilities(chainIds?: string[]): Promise<RelayerCapabilities> {
-    return rpcCall("relayer_getCapabilities", [chainIds || [String(config.chainId)]]);
-  }
-
-  /**
    * Ambil data biaya untuk sebuah transaksi.
    * Return fee quote yang valid untuk beberapa saat.
    */
   async getFeeData(chainId: string, tokenAddress: string): Promise<FeeData> {
     return rpcCall("relayer_getFeeData", [{ chainId, tokenAddress }]);
-  }
-
-  /**
-   * Estimate gas untuk transaksi ERC-7710.
-   * Dipakai untuk cek apakah transaksi akan berhasil sebelum submit.
-   */
-  async estimateTransaction(params: {
-    chainId: string;
-    from: string;
-    to: string;
-    data: string;
-    value?: string;
-    permissionContext: any[];
-    authorizationList?: any[];
-  }): Promise<any> {
-    return rpcCall("relayer_estimate7710Transaction", [params]);
   }
 
   /**

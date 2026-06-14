@@ -113,23 +113,3 @@ export function ResourceCard({ resource, onSave }: Props) {
     </motion.div>
   )
 }
-
-export function ResourceSkeleton() {
-  return (
-    <div className="glass rounded-2xl p-5 animate-pulse">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-surface-200" />
-        <div className="flex-1">
-          <div className="h-4 bg-surface-200 rounded w-48 mb-1" />
-          <div className="h-3 bg-surface-200 rounded w-32" />
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-surface-50/50 rounded-lg p-2 h-12" />
-        ))}
-      </div>
-      <div className="h-8 bg-surface-200 rounded-lg" />
-    </div>
-  )
-}

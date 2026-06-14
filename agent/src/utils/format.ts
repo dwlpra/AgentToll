@@ -42,27 +42,10 @@ const C = {
   bgBlack: "\x1b[40m",
 };
 
-/** Brand colors */
-export const brand = {
-  orange: C.brightYellow,
-  blue: C.brightBlue,
-  green: C.brightGreen,
-  red: C.brightRed,
-  cyan: C.brightCyan,
-  magenta: C.brightMagenta,
-  dim: C.dim,
-  bold: C.bold,
-  reset: C.reset,
-};
-
 // ── Primitives ──────────────────────────────────────────────
 
 export function color(text: string, c: string): string {
   return `${c}${text}${C.reset}`;
-}
-
-export function bold(text: string): string {
-  return `${C.bold}${text}${C.reset}`;
 }
 
 export function dim(text: string): string {
@@ -181,7 +164,7 @@ export function agentPhaseHeader(phase: number, icon: string, name: string, subt
 }
 
 /** Score bar — visual ASCII quality bar */
-export function scoreBar(score: number, width = 10): string {
+function scoreBar(score: number, width = 10): string {
   const filled = Math.round((score / 100) * width);
   const empty = width - filled;
   const bar = "█".repeat(filled) + "░".repeat(empty);
