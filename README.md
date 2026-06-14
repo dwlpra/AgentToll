@@ -13,7 +13,7 @@ Built for the **MetaMask Smart Accounts Kit × 1Shot API × Venice AI Dev Cook O
 [![Venice AI](https://img.shields.io/badge/AI-Venice_API-7C3AED)](https://venice.ai)
 [![1Shot](https://img.shields.io/badge/Relayer-1Shot_Permissionless-10B981)](https://1shotapi.com)
 [![x402](https://img.shields.io/badge/Protocol-x402-F59E0B)](https://x402.org)
-[![Tests](https://img.shields.io/badge/Tests-15%2F15-passing-22C55E)]()
+[![Tests](https://img.shields.io/badge/Tests-13%2F13-passing-22C55E)]()
 
 </div>
 
@@ -220,7 +220,7 @@ AGENT_WALLET=0xYourMetaMaskAddress
 
 # Optional (defaults work for local dev)
 GATEWAY_URL=http://localhost:19090
-PAYMENT_MODE=live          # live | stub
+PAYMENT_MODE=live          # live (real on-chain via 1Shot relayer)
 RPC_URL=https://mainnet.base.org
 EXPLORER_URL=https://basescan.org
 ```
@@ -259,11 +259,7 @@ cd ui && npm run dev
 ### 5. Run Agent
 
 ```bash
-# With Venice AI (live reasoning):
 cd agent && npx tsx src/index.ts "Summarize this week's Asian crypto market sentiment"
-
-# Without API key (mock brain — simulated decisions):
-cd agent && npx tsx src/index.ts
 ```
 
 ### 6. View Dashboard
@@ -307,12 +303,11 @@ Open **http://localhost:19090/dashboard** to see revenue, purchases, and transac
 ├── agent/                    # TypeScript — AI agent
 │   ├── src/index.ts          # Entry point with config validation & startup banner
 │   ├── src/brain.ts          # Venice AI 4-phase multi-agent pipeline (7 tools)
-│   ├── src/mock-brain.ts     # Simulated decisions for testing without API key
 │   ├── src/config.ts         # Centralized config with validateConfig()
 │   ├── src/utils/format.ts   # Terminal formatting: colors, budget meter, reasoning boxes
 │   ├── src/tools/
 │   │   ├── fetchResource.ts  # HTTP client with 15s timeout, 402 detection
-│   │   └── payX402.ts        # 2 payment modes: live (1Shot) / stub (webhook)
+│   │   └── payX402.ts        # Live on-chain payment via 1Shot relayer (ERC-7710)
 │   └── src/wallet/
 │       ├── erc20.ts          # ERC-20 transfer calldata encoder (viem)
 │       └── relayer.ts        # 1Shot JSON-RPC client (getFeeData, send7710, pollStatus)
@@ -374,7 +369,7 @@ usdcAddress: CHAIN_ID === 84532
 - ✅ **1Shot Permissionless Relayer** for gasless ERC-7710 execution (JSON-RPC)
 - ✅ **x402 protocol** for HTTP-native pay-per-request (402 + accepts[])
 - ✅ **No smart contract deployment** — fully protocol-level via EIP-7702 + ERC-7715 + x402
-- ✅ **15/15 tests passing** — full integration test coverage
+- ✅ **13/13 tests passing** — x402 paywall + catalog signal coverage
 
 ---
 

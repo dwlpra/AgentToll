@@ -60,9 +60,8 @@ export const config = {
   providerWallet: process.env.PROVIDER_WALLET || "0xPROVIDER_WALLET",
 
   // === PAYMENT MODE ===
-  // "stub" = langsung panggil webhook, tanpa blockchain (untuk testing)
-  // "live" = otonom via 1Shot relayer + ERC-7710 (mode utama)
-  paymentMode: (process.env.PAYMENT_MODE || "live") as "stub" | "live",
+  // "live" = otonom via 1Shot relayer + ERC-7710 (mode tunggal — real on-chain)
+  paymentMode: (process.env.PAYMENT_MODE || "live") as "live",
 
   // === BUDGET ===
   // Budget agent: fetched from gateway API (set via React UI)
@@ -154,9 +153,9 @@ export function validateConfig(): string[] {
     warnings.push("PROVIDER_WALLET not set — using placeholder, payments will go to invalid address");
   }
 
-  const validModes = ["stub", "live"];
+  const validModes = ["live"];
   if (!validModes.includes(config.paymentMode)) {
-    warnings.push(`PAYMENT_MODE="${config.paymentMode}" is invalid — must be stub or live`);
+    warnings.push(`PAYMENT_MODE="${config.paymentMode}" is invalid — must be live`);
   }
 
   if (!/^0x[a-fA-F0-9]{40}$/.test(config.usdcAddress)) {

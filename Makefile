@@ -2,7 +2,6 @@
 # Usage:
 #   make all          → start semua services (background)
 #   make agent        → run agent (foreground, tunggu output)
-#   make agent-mock   → run agent tanpa Venice AI (mock brain)
 #   make stop         → stop semua services
 #   make status       → cek semua services running atau tidak
 #   make test         → run semua tests
@@ -28,7 +27,7 @@ MOCK_PID    := $(PID_DIR)/mock-api.pid
 GATEWAY_PID := $(PID_DIR)/gateway.pid
 UI_PID      := $(PID_DIR)/ui.pid
 
-.PHONY: all install mock gateway ui agent agent-mock stop status test clean demo logs help mainnet mainnet-stop mainnet-demo
+.PHONY: all install mock gateway ui agent stop status test clean demo logs help mainnet mainnet-stop mainnet-demo
 
 help: ## Tampilkan help
 	@echo ""
@@ -37,7 +36,6 @@ help: ## Tampilkan help
 	@echo "  $(GREEN)make all$(RESET)          Start semua services (background)"
 	@echo "  $(GREEN)make demo$(RESET)         Full demo: start services + run agent"
 	@echo "  $(GREEN)make agent$(RESET)        Run agent dengan Venice AI (foreground)"
-	@echo "  $(GREEN)make agent-mock$(RESET)   Run agent tanpa Venice AI (foreground)"
 	@echo "  $(GREEN)make stop$(RESET)         Stop semua services"
 	@echo "  $(GREEN)make restart$(RESET)      Restart semua services"
 	@echo "  $(GREEN)make status$(RESET)       Cek status semua services"
@@ -101,7 +99,7 @@ all: $(PID_DIR) ## Start semua services
 	@echo "  React UI:      http://localhost:$(UI_PORT)"
 	@echo ""
 	@echo "$(YELLOW)Open the React UI, connect MetaMask, grant permissions, then run the agent.$(RESET)"
-	@echo "$(YELLOW)Run 'make agent' or 'make agent-mock' to start the agent.$(RESET)"
+	@echo "$(YELLOW)Run 'make agent' to start the agent (or 'make demo' for full flow).$(RESET)"
 	@echo ""
 
 stop: ## Stop semua services
@@ -163,19 +161,16 @@ logs: ## Tampilkan log semua services
 agent: ## Run agent dengan Venice AI
 	@cd agent && npx tsx src/index.ts "$(QUERY)"
 
-agent-mock: ## Run agent tanpa Venice AI (mock brain)
-	@cd agent && VENICE_API_KEY="" npx tsx src/index.ts
-
 # ── Demo ─────────────────────────────────────────────────────
 
-demo: ## Full demo: start services + run agent
+demo: ## Full demo: start services + run agent (live)
 	@$(MAKE) stop 2>/dev/null
 	@$(MAKE) all
 	@echo ""
-	@echo "$(BOLD)$(YELLOW)Running agent (mock mode)...$(RESET)"
+	@echo "$(BOLD)$(YELLOW)Running agent (live, real Venice AI + on-chain payments)...$(RESET)"
 	@echo ""
 	@sleep 2
-	@cd agent && VENICE_API_KEY="" npx tsx src/index.ts
+	@cd agent && npx tsx src/index.ts
 	@echo ""
 	@echo "$(BOLD)$(GREEN)Demo complete! Check dashboard: http://localhost:$(GATEWAY_PORT)/dashboard$(RESET)"
 

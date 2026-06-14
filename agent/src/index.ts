@@ -9,7 +9,6 @@
  */
 
 import { runAgent } from "./brain.js";
-import { runMockBrain } from "./mock-brain.js";
 import { initPaymentContext } from "./tools/payX402.js";
 import { config, validateConfig, fetchAgentConfigFromGateway, fetchProviderWalletFromGateway } from "./config.js";
 import * as fmt from "./utils/format.js";
@@ -17,9 +16,6 @@ import * as fmt from "./utils/format.js";
 // Query from CLI args, or default query about Asian crypto market sentiment
 const query = process.argv.slice(2).join(" ") ||
   "Summarize this week's Asian crypto market sentiment, then provide an in-depth analysis.";
-
-// Jika tidak ada VENICE_API_KEY, gunakan mock brain (simulasi tanpa AI)
-const useMock = !process.env.VENICE_API_KEY;
 
 async function main() {
   // Startup banner
@@ -66,16 +62,11 @@ async function main() {
 
   // Pre-flight: cek apakah permissionsContext sudah tersedia
   const ready = await initPaymentContext();
-  if (!ready && config.paymentMode === "live") {
-    console.log(fmt.color("\n  ⚠ No permissionsContext — continuing in stub fallback mode\n", "\x1b[93m"));
+  if (!ready) {
+    console.log(fmt.color("\n  ⚠ No permissionsContext — payments will fail until you grant permissions in the UI\n", "\x1b[93m"));
   }
 
-  if (useMock) {
-    console.log(fmt.color("\n  ℹ VENICE_API_KEY not set — using mock brain\n", "\x1b[93m"));
-    await runMockBrain(query);
-  } else {
-    await runAgent(query);
-  }
+  await runAgent(query);
 }
 
 main().catch((err) => {

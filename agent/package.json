@@ -5,7 +5,6 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "agent:stub": "PAYMENT_MODE=stub tsx src/index.ts",
     "agent:live": "PAYMENT_MODE=live tsx src/index.ts",
     "test": "vitest run"
   },

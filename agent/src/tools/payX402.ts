@@ -2,22 +2,14 @@
  * payX402.ts — Sistem pembayaran agent (jantung dari pay-per-crawl)
  *
  * File ini menangani seluruh flow pembayaran ketika agent menemukan x402 paywall.
+ * Pembayaran selalu REAL on-chain (Base mainnet) — tidak ada mode simulasi.
  *
- * Ada 2 mode pembayaran:
- *
- * 1. LIVE (mode utama):
- *    Agent mengambil permissionsContext (dari MetaMask grant di React UI) lalu
- *    mengirim ke 1Shot relayer untuk eksekusi gasless on-chain via ERC-7710.
- *    TANPA popup MetaMask — fully autonomous.
- *
- * 2. STUB (testing):
- *    Langsung panggil webhook gateway tanpa blockchain.
- *    Untuk development dan testing tanpa wallet.
- *
- * Flow utama (live mode):
+ * Flow:
  *   React UI grant permissions → gateway stores context
  *   → Agent → encodeTransfer(USDC, provider) → 1Shot relayer → on-chain tx
  *   → webhook gateway → agent dapat data
+ *
+ * Tidak ada popup MetaMask saat pembayaran — fully autonomous via ERC-7710.
  */
 
 import { config, explorerTxLink } from "../config.js";
@@ -80,7 +72,7 @@ async function getPermissionsContext(): Promise<PermissionsContext | null> {
 }
 
 /**
- * Router: memilih mode pembayaran berdasarkan config.
+ * Router: eksekusi pembayaran on-chain via 1Shot relayer (mode tunggal — live).
  */
 export async function payX402(
   resource: string,
@@ -88,28 +80,20 @@ export async function payX402(
   asset: string,    // USDC contract address
   payTo: string     // wallet penyedia (penerima pembayaran)
 ): Promise<PayResult> {
-  switch (config.paymentMode) {
-    case "live":
-      return payX402Live(resource, amount, asset, payTo);
-    default:
-      return payX402Stub(resource, amount, asset, payTo);
-  }
+  return payX402Live(resource, amount, asset, payTo);
 }
 
 /**
  * Pre-flight check: dipanggil sekali saat agent startup.
  *
- * Memastikan permissionsContext tersedia untuk live mode.
- * Jika tidak ada, agent tetap jalan tapi fallback ke stub.
+ * Memastikan permissionsContext tersedia. Jika tidak ada, agent tetap jalan
+ * tapi setiap pembayaran akan gagal (tidak ada fallback simulasi).
  */
 export async function initPaymentContext(): Promise<boolean> {
-  if (config.paymentMode !== "live") return true;
-
   const ctx = await getPermissionsContext();
   if (!ctx) {
     console.log(`[payX402] WARNING: no permissionsContext found.`);
-    console.log(`[payX402] Open http://localhost:3000 in browser, connect MetaMask, grant permissions.`);
-    console.log(`[payX402] Falling back to stub mode for this session.`);
+    console.log(`[payX402] Open http://localhost:5173, connect MetaMask, grant permissions.`);
     return false;
   }
 
@@ -140,10 +124,10 @@ async function payX402Live(
 
   const ctx = await getPermissionsContext();
 
-  // Fallback ke stub jika tidak ada context
+  // Tidak ada permissionsContext — pembayaran tidak bisa dieksekusi (gagal jujur, tidak ada simulasi)
   if (!ctx) {
-    console.log(`[payX402][live] no permissionsContext — falling back to stub`);
-    return payX402Stub(resource, amount, asset, payTo);
+    console.log(`[payX402][live] no permissionsContext — payment cannot proceed`);
+    return { success: false, error: "no permissionsContext — grant permissions in the UI first" };
   }
 
   try {
@@ -238,57 +222,8 @@ async function payX402Live(
 
     return { success: false, error: "no taskId from relayer" };
   } catch (err: any) {
-    // Relayer gagal — fallback ke stub (demo tetap jalan)
+    // Relayer gagal — gagal jujur (tidak ada simulasi pembayaran)
     console.error(`[payX402][live] relayer error: ${err.message}`);
-    console.log(`[payX402][live] falling back to stub webhook`);
-    return payX402Stub(resource, amount, asset, payTo);
+    return { success: false, error: `relayer error: ${err.message}` };
   }
-}
-
-// ======================================================================
-// MODE: STUB — Direct webhook call tanpa blockchain
-// ======================================================================
-//
-// Untuk testing: langsung panggil webhook gateway dengan data pembayaran
-// tanpa ada transaksi blockchain. Gateway tetap authorize agent.
-// Ini memungkinkan development tanpa wallet atau blockchain.
-async function payX402Stub(
-  resource: string,
-  amount: string,
-  asset: string,
-  payTo: string
-): Promise<PayResult> {
-  const cost = (Number(amount) / 1e6).toFixed(2);
-  const recipient = (!payTo || payTo === "0x0000000000000000000000000000000000000000")
-    ? config.providerWallet : payTo;
-  console.log(`[payX402][stub] paying ${cost} USDC to ${recipient} for ${resource}`);
-
-  // Buat fake txHash untuk tracking (di mainnet ini akan diganti real txHash)
-  const txHash = `0xstub_${Date.now().toString(16)}`;
-
-  // Langsung panggil webhook gateway dengan data pembayaran
-  const webhookPayload = {
-    taskId: `stub-${Date.now()}`,
-    status: "confirmed",
-    wallet: config.agentWallet,
-    resource,
-    amount,
-    asset,
-    txHash,
-  };
-
-  const res = await fetch(`${config.gatewayUrl}/webhook`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(webhookPayload),
-  });
-
-  if (!res.ok) {
-    return { success: false, error: `webhook failed: ${res.status}` };
-  }
-
-  const body = await res.json();
-  console.log(`[payX402][stub] ✅ Paid ${cost} USDC to ${recipient}`);
-  console.log(`[payX402][stub]    txHash: ${txHash} (stub — no on-chain tx)`);
-  return { success: true, taskId: webhookPayload.taskId, txHash };
 }
