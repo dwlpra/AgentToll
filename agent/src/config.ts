@@ -33,7 +33,7 @@ export const config = {
   // The API is OpenAI-compatible, so the openai SDK is used directly.
   veniceApiKey: process.env.VENICE_API_KEY || "",
   veniceBaseUrl: "https://api.venice.ai/api/v1",
-  veniceModel: process.env.VENICE_MODEL || "z-ai-glm-5-turbo",
+  veniceModel: process.env.VENICE_MODEL || "zai-org-glm-5",
 
   // === BLOCKCHAIN ===
   // Base Mainnet: chainId=8453, chainIdHex=0x2105 (DEFAULT)
