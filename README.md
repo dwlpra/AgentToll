@@ -57,7 +57,7 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 | Track | Prize | What We Built |
 |-------|-------|---------------|
 | **Best x402 + ERC-7710** | $3,000 | Full x402 protocol (HTTP 402 + accepts[]), ERC-7710 gasless execution via 1Shot relayer, webhook confirmation |
-| **Best use of Venice AI** | $3,000 | Function calling with 3 tools, budget-aware cost/value reasoning ("$0.12/source — good value"), multi-source synthesis |
+| **Best use of Venice AI** | $3,000 | 4-phase multi-agent pipeline (Scout → Buyer → Analyst → Synthesizer), 7 function-call tools, budget-aware cost/value reasoning, multi-source synthesis |
 | **Best Agent** | $3,000 | Autonomous loop: plan → crawl → reason → pay → synthesize. Budget management, quality-maximizing decisions |
 | **Best Use of 1Shot Relayer** | $1,000 USDC | Full JSON-RPC client (getFeeData, send7710, pollStatus), gasless execution, webhook integration |
 
@@ -189,8 +189,7 @@ graph LR
 | **Node.js** | 18+ | [nodejs.org](https://nodejs.org/) |
 | **MetaMask Flask** | 13.5.0+ | [Flask extension](https://metamask.io/flask/) (separate browser profile!) |
 | **Venice API Key** | — | [venice.ai/settings/api](https://venice.ai/settings/api) |
-| **Base Sepolia ETH** | For gas | [Coinbase Faucet](https://portal.cdp.coinbase.com/products/faucet) |
-| **Base Sepolia USDC** | For payments | [Circle Faucet](https://faucet.circle.com) |
+| **Base USDC** | For payments | Bridge USDC to Base (~$5 is plenty; gas is sponsored by 1Shot) |
 
 ---
 
@@ -202,8 +201,9 @@ graph LR
 git clone https://github.com/dwlpra/AgentToll.git
 cd AgentToll
 
-# Install agent dependencies
+# Install dependencies
 cd agent && npm install
+cd ../ui && npm install
 ```
 
 ### 2. Configure Environment
@@ -289,22 +289,24 @@ Open **http://localhost:19090/dashboard** to see revenue, purchases, and transac
 ## Project Structure
 
 ```
-├── gateway/                  # Go — x402 gateway + provider dashboard
+├── gateway/                  # Go — x402 gateway + REST API + provider dashboard
 │   ├── main.go               # Entry point, CORS, routes, cleanup ticker
 │   ├── config.go             # Environment-driven config
-│   ├── catalog.go            # GET /catalog proxy with price metadata
-│   ├── dashboard.go          # Provider dashboard with revenue chart (canvas)
+│   ├── catalog.go            # GET /catalog proxy to mock-api
+│   ├── dashboard.go          # Provider dashboard data (revenue, purchases)
+│   ├── resources.go          # REST API: /api/resources, /api/agent-config,
+│   │                         #   /api/provider-config, /api/crawl (managers)
 │   ├── middleware/x402.go    # 402 + accepts[] paywall protocol
 │   ├── payments/store.go     # Authorization store with TTL, purchase recording
-│   ├── payments/webhook.go   # Payment confirmation handler (amount validation)
-│   └── proxy/proxy.go        # Reverse proxy with gateway secret header
+│   ├── payments/webhook.go   # Payment confirmation handler (amount + HMAC validation)
+│   └── proxy/proxy.go        # Reverse proxy to mock-api (X-Gateway-Secret header)
 ├── mock-api/                 # Go — paid content data provider
 │   └── main.go               # 3 crypto reports: asia-daily, quick-take, deep-dive
 │                             #   Each with: keyMetrics, analysis sections,
 │                             #   riskFactors, verdict, confidence score
 ├── agent/                    # TypeScript — AI agent
 │   ├── src/index.ts          # Entry point with config validation & startup banner
-│   ├── src/brain.ts          # Venice AI function calling loop (3 tools, 15 iterations)
+│   ├── src/brain.ts          # Venice AI 4-phase multi-agent pipeline (7 tools)
 │   ├── src/mock-brain.ts     # Simulated decisions for testing without API key
 │   ├── src/config.ts         # Centralized config with validateConfig()
 │   ├── src/utils/format.ts   # Terminal formatting: colors, budget meter, reasoning boxes
@@ -316,7 +318,7 @@ Open **http://localhost:19090/dashboard** to see revenue, purchases, and transac
 │       └── relayer.ts        # 1Shot JSON-RPC client (getFeeData, send7710, pollStatus)
 ├── ui/                       # React + wagmi — control panel & dashboards
 │   └── src/pages/AgentBridge.tsx  # MetaMask connect + ERC-7715 grant (Smart Accounts Kit)
-└── description.md            # HackQuest submission description
+└── Makefile                  # one-command orchestration (make all / demo / test)
 ```
 
 ---
@@ -337,7 +339,7 @@ The gateway implements the [x402](https://x402.org) HTTP-native pay-per-request 
     "resource": "/reports/deep-dive",
     "description": "Asia Crypto Sentiment — Deep Dive Analysis",
     "payTo": "0xGATEWAY_WALLET",
-    "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "maxTimeoutSeconds": 60
   }]
 }
@@ -347,26 +349,19 @@ The gateway implements the [x402](https://x402.org) HTTP-native pay-per-request 
 
 ---
 
-## Switching to Mainnet
+## Chain Configuration
 
-For the 1Shot bounty track (requires mainnet):
+The project runs on **Base mainnet by default** (`CHAIN_ID=8453`, real USDC). Testnet (Base Sepolia, `84532`) is supported — set `CHAIN_ID=84532` in `agent/.env` and `config.ts` auto-selects the matching USDC address, RPC, and chain hex. `config.ts` documents both:
 
-1. Bridge USDC to Base mainnet (~$5 USDC needed)
-2. Update `agent/.env`:
-   ```env
-   PAYMENT_MODE=live
-   EXPLORER_URL=https://basescan.org
-   RELAYER_URL=https://relayer.1shotapi.com/relayers
-   ```
-3. Update `agent/src/config.ts`:
-   ```typescript
-   chainId: 8453           // was 84532
-   chainIdHex: "0x2105"    // was "0x14a34"
-   usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-   ```
-4. Switch MetaMask to **Base** (not Sepolia)
-5. Grant Permissions again (one popup on mainnet)
-6. Run agent → real on-chain USDC transfers with gasless execution
+```typescript
+chainId:    CHAIN_ID === 84532 ? 84532 : 8453              // 8453 = Base (default)
+chainIdHex: CHAIN_ID === 84532 ? "0x14a34" : "0x2105"
+usdcAddress: CHAIN_ID === 84532
+  ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"          // Base Sepolia USDC
+  : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"          // Base USDC
+```
+
+> **Note on gas:** 1Shot's Permissionless Relayer sponsors gas, so the agent wallet does **not** need ETH — only USDC for the data purchases.
 
 ---
 
