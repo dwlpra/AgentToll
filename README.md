@@ -382,26 +382,36 @@ The project runs on **Base mainnet by default** (`CHAIN_ID=8453`, real USDC). Te
 
 ---
 
-## Key Code Links
+## Smart Accounts Kit Usage
 
-Judges can review the core implementation directly:
+### Advanced Permissions
 
-**MetaMask Smart Accounts Kit / ERC-7715:**
-- [Request Advanced Permissions (UI)](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — raw `window.ethereum.request` with `wallet_requestExecutionPermissions`
-- [Decode Delegations via SAK](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — `decodeDelegations` from `@metamask/smart-accounts-kit/utils`
-- [Redeem Advanced Permissions (Agent)](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — permissionContext passed to `relayer_send7710Transaction` for gasless ERC-7710 execution
+- **Request:** [`ui/src/pages/AgentBridge.tsx`](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — raw `window.ethereum.request` with `wallet_requestExecutionPermissions` to grant ERC-7715 `erc20-token-periodic` permission with spending cap
+- **Redeem:** [`agent/src/wallet/relayer.ts`](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — decoded permissionContext passed to `relayer_send7710Transaction` for autonomous gasless ERC-7710 execution
+- **Decode:** [`ui/src/pages/AgentBridge.tsx`](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — `decodeDelegations` from `@metamask/smart-accounts-kit/utils` to convert raw hex to structured JSON for the agent
 
-**1Shot Permissionless Relayer / ERC-7710:**
-- [Relayer RPC Client](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — getFeeData, send7710Transaction, getStatus
-- [Payment Execution (payX402)](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/tools/payX402.ts) — encode ERC-20 transfer + submit to relayer
+### Delegations
 
-**Venice AI:**
-- [4-Phase Pipeline (brain.ts)](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/brain.ts) — Scout, Buyer, Analyst, Synthesis
-- [Agent Config & Venice Setup](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/config.ts) — Venice API + model configuration
+Not using custom delegations — project relies entirely on ERC-7715 Advanced Permissions.
 
-**x402 Protocol:**
-- [Gateway x402 Middleware](https://github.com/dwlpra/PayCrawl/blob/main/gateway/middleware/x402.go) — HTTP 402 + accepts[] schema
-- [Payment Confirmation Endpoint](https://github.com/dwlpra/PayCrawl/blob/main/gateway/main.go) — POST /api/payment-confirmed + purchase log
+### Redelegation
+
+Not using redelegation.
+
+### x402
+
+- **Server:** [`gateway/middleware/x402.go`](https://github.com/dwlpra/PayCrawl/blob/main/gateway/middleware/x402.go) — HTTP 402 + accepts[] paywall protocol and [`gateway/main.go`](https://github.com/dwlpra/PayCrawl/blob/main/gateway/main.go) — POST `/api/payment-confirmed` + purchase log
+- **Client (x402-ERC-7710):** [`agent/src/tools/payX402.ts`](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/tools/payX402.ts) — encodes ERC-20 USDC transfer, attaches permissionContext, submits gasless transaction via 1Shot relayer
+
+## 1Shot API Usage
+
+- [`agent/src/wallet/relayer.ts`](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — Full JSON-RPC client: `relayer_getCapabilities`, `relayer_getFeeData`, `relayer_send7710Transaction`, `relayer_getStatus`
+- [`agent/src/tools/payX402.ts`](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/tools/payX402.ts) — Payment execution: encode calldata + submit to relayer + poll status + confirm to gateway
+
+## Venice AI Usage
+
+- [`agent/src/brain.ts`](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/brain.ts) — 4-phase pipeline: Scout (evaluate and score), Buyer (deterministic), Analyst (quality review), Synthesis (final report)
+- [`agent/src/config.ts`](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/config.ts) — Venice API configuration, model selection (`zai-org-glm-5`), OpenAI-compatible client setup
 
 ---
 
