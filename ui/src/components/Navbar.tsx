@@ -10,9 +10,34 @@ import {
   ExternalLink,
   ChevronDown,
   FileText,
+  ShieldCheck,
+  Globe,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useUsdcBalance } from '../hooks/useUsdcBalance'
+import { useRole, PROVIDER_WALLET } from '../hooks/useRole'
+
+function RoleBadge() {
+  const { role, isWhitelistedProvider } = useRole()
+
+  if (!role) return null
+
+  if (role === 'provider' && isWhitelistedProvider) {
+    return (
+      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">
+        <ShieldCheck className="w-2.5 h-2.5" />
+        PROVIDER
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 text-[10px] font-semibold">
+      <Bot className="w-2.5 h-2.5" />
+      AGENT
+    </span>
+  )
+}
 
 function WalletButton() {
   const { address, chainId, connector } = useAccount()
@@ -41,66 +66,73 @@ function WalletButton() {
   const explorer = chainId === 8453 ? 'basescan.org' : 'sepolia.basescan.org'
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 glass glass-hover rounded-xl px-4 py-2 text-sm font-medium transition-all cursor-pointer"
-      >
-        <div className="w-2 h-2 rounded-full bg-emerald-400" />
-        <span className="text-white">{short}</span>
-        <span className="text-surface-400 text-xs">{chainName}</span>
-        <ChevronDown className="w-3 h-3 text-surface-400" />
-      </button>
-
-      {open && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          className="absolute right-0 top-full mt-2 w-72 glass rounded-xl p-4 z-50"
+    <div className="flex items-center gap-2">
+      <RoleBadge />
+      <div className="relative">
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-2 glass glass-hover rounded-xl px-4 py-2 text-sm font-medium transition-all cursor-pointer"
         >
-          <div className="flex items-center gap-3 mb-3">
-            <Wallet className="w-5 h-5 text-brand-400" />
-            <div>
-              <p className="text-sm font-medium text-white">{short}</p>
-              <p className="text-xs text-surface-400">Connected via {connector?.name}</p>
+          <div className="w-2 h-2 rounded-full bg-emerald-400" />
+          <span className="text-white">{short}</span>
+          <span className="text-surface-400 text-xs">{chainName}</span>
+          <ChevronDown className="w-3 h-3 text-surface-400" />
+        </button>
+
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="absolute right-0 top-full mt-2 w-72 glass rounded-xl p-4 z-50"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <Wallet className="w-5 h-5 text-brand-400" />
+              <div>
+                <p className="text-sm font-medium text-white">{short}</p>
+                <p className="text-xs text-surface-400">Connected via {connector?.name}</p>
+              </div>
             </div>
-          </div>
-          <div className="bg-surface-50/50 rounded-lg p-3 mb-3">
-            <p className="text-xs text-surface-400 mb-1">USDC Balance</p>
-            <p className="text-lg font-semibold text-white">${balance}</p>
-          </div>
-          <div className="flex gap-2">
-            <a
-              href={`https://${explorer}/address/${address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-1 text-xs text-surface-400 hover:text-white transition-colors py-2 rounded-lg hover:bg-surface-50/50"
-            >
-              <ExternalLink className="w-3 h-3" /> Explorer
-            </a>
-            <button
-              onClick={() => { disconnect(); setOpen(false) }}
-              className="flex-1 flex items-center justify-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors py-2 rounded-lg hover:bg-red-500/10"
-            >
-              <LogOut className="w-3 h-3" /> Disconnect
-            </button>
-          </div>
-        </motion.div>
-      )}
+            <div className="bg-surface-50/50 rounded-lg p-3 mb-3">
+              <p className="text-xs text-surface-400 mb-1">USDC Balance</p>
+              <p className="text-lg font-semibold text-white">${balance}</p>
+            </div>
+            <div className="flex gap-2">
+              <a
+                href={`https://${explorer}/address/${address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-1 text-xs text-surface-400 hover:text-white transition-colors py-2 rounded-lg hover:bg-surface-50/50"
+              >
+                <ExternalLink className="w-3 h-3" /> Explorer
+              </a>
+              <button
+                onClick={() => { disconnect(); setOpen(false) }}
+                className="flex-1 flex items-center justify-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors py-2 rounded-lg hover:bg-red-500/10"
+              >
+                <LogOut className="w-3 h-3" /> Disconnect
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </div>
     </div>
   )
 }
 
 export function Navbar() {
   const location = useLocation()
+  const { address } = useAccount()
+  const { isWhitelistedProvider } = useRole()
 
-  const links = [
+  const allLinks = [
     { to: '/', label: 'Home', icon: Zap },
     { to: '/articles', label: 'Articles', icon: FileText },
-    { to: '/provider', label: 'Provider', icon: LayoutDashboard },
+    { to: '/provider', label: 'Provider', icon: LayoutDashboard, providerOnly: true },
     { to: '/agent', label: 'Agent', icon: Bot },
   ]
+
+  const links = allLinks.filter((l) => !l.providerOnly || (address && isWhitelistedProvider))
 
   return (
     <nav className="sticky top-0 z-40 glass border-b border-surface-200/50">
@@ -135,7 +167,13 @@ export function Navbar() {
               })}
             </div>
           </div>
-          <WalletButton />
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold border border-blue-500/20">
+              <Globe className="w-3 h-3" />
+              BASE MAINNET
+            </span>
+            <WalletButton />
+          </div>
         </div>
       </div>
     </nav>

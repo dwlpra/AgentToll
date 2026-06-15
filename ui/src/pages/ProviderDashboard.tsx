@@ -3,13 +3,14 @@ import { useAccount } from 'wagmi'
 import { useState, useEffect } from 'react'
 import {
   Wallet, DollarSign, BarChart3, TrendingUp, RefreshCw, ExternalLink, Coins,
-  CheckCircle2, Activity, ShoppingBag,
+  CheckCircle2, Activity, ShoppingBag, ShieldAlert,
 } from 'lucide-react'
 import { useUsdcBalance } from '../hooks/useUsdcBalance'
 import { useGatewayApi } from '../hooks/useGatewayApi'
 import { ResourceCard } from '../components/ResourceCard'
 import { RevenueChart } from '../components/RevenueChart'
 import { PurchaseTable } from '../components/PurchaseTable'
+import { PROVIDER_WALLET } from '../hooks/useRole'
 
 const container = {
   hidden: { opacity: 0 },
@@ -24,24 +25,17 @@ export function ProviderDashboard() {
   const { address, chainId } = useAccount()
   const { balance, refetch: refetchBalance } = useUsdcBalance()
   const {
-    resources, dashboard, updateResourcePrice, refreshAll, loading,
-    providerWallet, saveProviderWallet,
+    resources, dashboard, purchases, purchaseRevenue, purchaseCount,
+    updateResourcePrice, refreshAll, loading,
+    providerWallet,
   } = useGatewayApi()
-  const [walletSaved, setWalletSaved] = useState(false)
+  const [walletSaved] = useState(true)
 
+  const isProvider = address?.toLowerCase() === PROVIDER_WALLET.toLowerCase()
   const explorer = chainId === 8453 ? 'basescan.org' : 'sepolia.basescan.org'
-  const purchases = dashboard?.purchases ?? []
-  const revenue = dashboard?.revenue ?? '0.00'
+  const revenue = purchaseRevenue
 
-  // Auto-save provider wallet
-  useEffect(() => {
-    if (address && address !== providerWallet) {
-      saveProviderWallet(address).then((ok) => { if (ok) setWalletSaved(true) })
-    } else if (address === providerWallet) {
-      setWalletSaved(true)
-    }
-  }, [address, providerWallet, saveProviderWallet])
-
+  // Access control
   if (!address) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
@@ -64,6 +58,31 @@ export function ProviderDashboard() {
     )
   }
 
+  if (!isProvider) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="glass rounded-2xl p-12 text-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-red-500" />
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+            <ShieldAlert className="w-8 h-8 text-amber-400" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Access Restricted</h2>
+          <p className="text-sm text-surface-400 max-w-md mx-auto">
+            This wallet is not registered as a provider. Only authorized wallets can
+            manage resources and receive payments.
+          </p>
+          <p className="text-xs text-surface-500 mt-2 font-mono">
+            Provider: {PROVIDER_WALLET.slice(0, 10)}...{PROVIDER_WALLET.slice(-8)}
+          </p>
+          <p className="text-xs text-brand-400 mt-4">
+            <a href="/agent" className="hover:underline">→ Go to Agent Dashboard</a>
+          </p>
+        </motion.div>
+      </div>
+    )
+  }
+
   const stats = [
     {
       label: 'On-chain Balance',
@@ -76,7 +95,7 @@ export function ProviderDashboard() {
     },
     {
       label: 'Total Revenue',
-      value: revenue,
+      value: `$${revenue}`,
       sub: 'USDC earned',
       icon: TrendingUp,
       gradient: 'from-emerald-500 to-cyan-500',
@@ -85,7 +104,7 @@ export function ProviderDashboard() {
     },
     {
       label: 'Purchases',
-      value: String(purchases.length),
+      value: String(purchaseCount),
       sub: 'agent buys',
       icon: ShoppingBag,
       gradient: 'from-amber-500 to-orange-500',

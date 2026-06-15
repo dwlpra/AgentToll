@@ -1,9 +1,17 @@
 import { motion } from 'framer-motion'
 import { ExternalLink, Clock, FileText } from 'lucide-react'
-import type { Purchase } from '../hooks/useGatewayApi'
+
+interface PurchaseEntry {
+  wallet: string
+  path: string
+  amount: string
+  txHash: string
+  chainId: number
+  timestamp: string
+}
 
 interface Props {
-  purchases: Purchase[]
+  purchases: PurchaseEntry[]
   chainId?: number
 }
 
@@ -59,9 +67,9 @@ export function PurchaseTable({ purchases, chainId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {purchases.slice().reverse().map((p, i) => (
+            {purchases.map((p, i) => (
               <motion.tr
-                key={p.id || i}
+                key={i}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: i * 0.05 }}
@@ -70,16 +78,16 @@ export function PurchaseTable({ purchases, chainId }: Props) {
                 <td className="py-3 pr-4">
                   <div className="flex items-center gap-1 text-xs text-surface-400">
                     <Clock className="w-3 h-3" />
-                    {p.timestamp ? new Date(p.timestamp).toLocaleTimeString() : '--'}
+                    {p.timestamp ? new Date(p.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--'}
                   </div>
                 </td>
                 <td className="py-3 pr-4">
                   <span className="text-xs text-white font-medium">
-                    {p.resource?.split('/').pop() || p.resource}
+                    {p.path?.split('/').pop() || p.path}
                   </span>
                 </td>
                 <td className="py-3 pr-4">
-                  <span className="text-xs text-emerald-400 font-medium">${p.amountUSD || '0.00'}</span>
+                  <span className="text-xs text-emerald-400 font-medium">${p.amount || '0.00'}</span>
                 </td>
                 <td className="py-3 pr-4">
                   <span className="text-xs text-surface-400 font-mono">

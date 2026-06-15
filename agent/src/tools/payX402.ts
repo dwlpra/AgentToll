@@ -132,8 +132,8 @@ async function payX402Live(
   try {
     const relayer = new OneShotRelayer();
 
-    // 1Shot expects chainId in hex format (e.g. "0x14a34", not "84532")
-    const chainId = config.chainIdHex;
+    // 1Shot expects chainId as decimal string (e.g. "8453", not hex)
+    const chainId = String(config.chainId);
 
     // Step 1: fetch fee data from the relayer (the sponsored gas cost)
     const feeData = await relayer.getFeeData(chainId, asset);
@@ -156,47 +156,48 @@ async function payX402Live(
     // When the user grants permissions via MetaMask (ERC-7715), the EOA is upgraded
     // to a smart account (EIP-7702). The delegation structure inside the context
     // authorizes the relayer to execute ERC-7710 calls.
+    // permissionsContext is stored as JSON-stringified decoded delegations
+    // (decoded in the UI via @metamask/smart-accounts-kit/utils decodeDelegations)
     let permissionContext: any[];
     try {
-      permissionContext = JSON.parse(ctx.permissionsContext);
+      const parsed = JSON.parse(ctx.permissionsContext);
+      permissionContext = Array.isArray(parsed) ? parsed : [parsed];
     } catch {
-      // If the context is a raw hex string, wrap it in an array
+      // Fallback: wrap raw hex string
       permissionContext = [ctx.permissionsContext];
     }
 
-    // EIP-7702: extract the authorization list from the context when present.
-    // The MetaMask Smart Accounts Kit encodes the 7702 authorization inside the
-    // permissionsContext. The 1Shot relayer needs it to upgrade the EOA → smart
-    // account on-chain.
-    let authorizationList: any[] | undefined;
-    if (Array.isArray(permissionContext)) {
-      for (const pc of permissionContext) {
-        if (pc && typeof pc === "object" && pc.authorization) {
-          authorizationList = Array.isArray(pc.authorization)
-            ? pc.authorization
-            : [pc.authorization];
-          console.log(`[payX402][live] found EIP-7702 authorization in permissionsContext`);
-          break;
-        }
-      }
-    }
-
     // Step 5: submit to the 1Shot relayer for gasless execution via ERC-7710.
+    // Correct format per 1Shot API:
+    //   params = { chainId, context, transactions: [{ permissionContext, executions }] }
+    //
     // The relayer will:
-    //   a. Decode the delegation from the permissionsContext (incl. EIP-7702 auth)
-    //   b. Build the transaction with our calldata
-    //   c. Execute it on-chain with the user paying no gas (sponsored)
-    //   d. Notify the gateway webhook when complete
+    //   a. Decode the delegation from the permissionContext
+    //   b. Execute the ERC-20 transfer on-chain (gasless — sponsored by relayer)
+    //   c. Notify the gateway webhook when complete
+
+    // Fee transfer execution: pay the relayer fee (minFee USDC to feeCollector)
+    const feeAmount = feeData.minFee || "0.01";
+    const feeUnits = String(Math.round(Number(feeAmount) * 1e6));
+    const feeCollector = feeData.feeCollector || "0xE936e8FAf4A5655469182A49a505055B71C17604";
+    const feeCalldata = encodeTransfer(
+      feeCollector as `0x${string}`,
+      BigInt(feeUnits)
+    );
+
     const result = await relayer.send7710Transaction({
       chainId,
-      from: config.agentWallet,     // smart account address (upgraded via EIP-7702)
-      to: asset,                     // USDC contract address
-      data: transferData,            // encoded transfer(recipient, amount)
-      permissionContext,             // delegation from the MetaMask grant (ERC-7715 + EIP-7702)
-      authorizationList,             // EIP-7702 authorization tuples (if extracted)
-      context: feeData.context,      // fee-data context from the relayer
-      destinationUrl: `${config.gatewayUrl}/webhook`, // webhook for confirmation
-      memo: `pay-per-crawl: ${resource}`,
+      context: feeData.context,
+      transactions: [{
+        permissionContext,
+        executions: [
+          // Fee leg: pay relayer fee
+          { target: asset, value: "0", data: feeCalldata },
+          // Work leg: transfer USDC to provider
+          { target: asset, value: "0", data: transferData },
+        ],
+      }],
+      destinationUrl: `${config.gatewayUrl}/webhook`,
     });
 
     console.log(`[payX402][live] relayer task: ${result.taskId}`);
@@ -205,7 +206,7 @@ async function payX402Live(
     if (result.taskId) {
       console.log(`[payX402][live] waiting for on-chain confirmation...`);
       const finalStatus = await relayer.pollStatus(result.taskId, 30000);
-      const ok = finalStatus.status === "confirmed" || finalStatus.status === "success";
+      const ok = ["200", "confirmed", "success", "1"].includes(String(finalStatus.status));
 
       if (ok && finalStatus.txHash) {
         console.log(`[payX402][live] ✅ Paid ${cost} USDC to ${recipient}`);

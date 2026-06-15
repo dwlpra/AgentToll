@@ -4,12 +4,13 @@ import { useAccount, useWalletClient } from 'wagmi'
 import { baseSepolia, base } from 'wagmi/chains'
 import {
   Wallet, Shield, Zap, AlertTriangle, Loader2, CheckCircle2, ArrowRight,
-  Play, Terminal, ChevronRight, Clock, DollarSign, Bot, Activity,
+  Play, ChevronRight, Clock, DollarSign, Bot, Activity,
   FileText, ExternalLink,
 } from 'lucide-react'
 import { BudgetSlider } from '../components/BudgetSlider'
 import { ExpirySelect, EXPIRY_OPTIONS } from '../components/ExpirySelect'
 import { PermissionStatus } from '../components/PermissionStatus'
+import { CrawlResultCard } from '../components/CrawlResultCard'
 import { useGatewayApi } from '../hooks/useGatewayApi'
 
 const CHAIN_CONFIG: Record<number, { name: string }> = {
@@ -52,34 +53,74 @@ export function AgentBridge() {
     setErrorMsg('')
     try {
       const { erc7715ProviderActions } = await import('@metamask/smart-accounts-kit/actions')
+      const { createWalletClient, custom, parseUnits } = await import('viem')
       const chain = chainId === 8453 ? base : baseSepolia
-      const extendedClient = walletClient.extend(erc7715ProviderActions())
       const now = Math.floor(Date.now() / 1000)
       const expiryTimestamp = now + expiry
       const usdcAddress = chainId === 8453
-        ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`
-        : '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`
-      const budgetUnits = BigInt(Math.round(budget * 1_000_000))
-      // NOTE: the ERC-7715 provider action is named `requestExecutionPermissions`
-      // (it triggers MetaMask's permission popup). `grantPermissions` does not exist
-      // in @metamask/smart-accounts-kit and throws "... is not a function".
-      const granted = await (extendedClient as any).requestExecutionPermissions([{
-        chainId: chain.id,
-        expiry: expiryTimestamp,
-        signer: { type: 'account', data: { address } },
+        ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+        : '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+      const budgetUnits = parseUnits(budget.toFixed(6), 6)
+
+      // Fetch relayer targetAddress
+      const relayerUrl = chainId === 8453
+        ? 'https://relayer.1shotapi.com/relayers'
+        : 'https://relayer.1shotapi.dev/relayers'
+      const capsRes = await fetch(relayerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'relayer_getCapabilities',
+          params: [String(chain.id)],
+        }),
+      })
+      const capsJson = await capsRes.json()
+      const chainCaps = capsJson.result?.[String(chain.id)]
+      const targetAddress = chainCaps?.targetAddress
+      console.log('[PayCrawl] Relayer targetAddress:', targetAddress, typeof targetAddress)
+      if (!targetAddress) {
+        throw new Error('Could not fetch relayer targetAddress from capabilities')
+      }
+
+      // Raw window.ethereum.request — bypass viem/SAK middleware entirely
+      // (viem's buildRequest strips `to` and `isAdjustmentAllowed` fields)
+      const chainIdHex = '0x' + chain.id.toString(16)
+      const periodAmountHex = '0x' + budgetUnits.toString(16)
+
+      const rpcParams = [{
+        chainId: chainIdHex,
+        to: targetAddress,
         permission: {
           type: 'erc20-token-periodic',
           data: {
             tokenAddress: usdcAddress,
-            periodAmount: budgetUnits,
+            periodAmount: periodAmountHex,
             periodDuration: 86400,
             startTime: now,
             justification: `PayCrawl: $${budget.toFixed(2)} USDC/day budget for autonomous data purchases`,
           },
+          isAdjustmentAllowed: true,
         },
-      }])
+        rules: [{ type: 'expiry', data: { timestamp: expiryTimestamp } }],
+      }]
+
+      const granted = await window.ethereum.request({
+        method: 'wallet_requestExecutionPermissions',
+        params: rpcParams,
+      })
+
       const expiryLabel = EXPIRY_OPTIONS.find((o) => o.seconds === expiry)?.label ?? `${expiry}s`
-      const context = typeof granted === 'string' ? granted : JSON.stringify(granted)
+      const rawContext = Array.isArray(granted) ? granted[0]?.context : (granted as any)?.context
+
+      // Decode the raw delegation hex into structured objects for the relayer.
+      // The 1Shot relayer expects decoded delegations (not raw ABI hex).
+      // BigInts are converted to hex strings for JSON transport.
+      const { decodeDelegations } = await import('@metamask/smart-accounts-kit/utils')
+      const decoded = decodeDelegations(rawContext)
+      const context = JSON.stringify(decoded, (_k: string, v: any) =>
+        typeof v === 'bigint' ? `0x${v.toString(16)}` : v
+      )
       await saveAgentConfig({
         budget, expiry, expiryLabel, wallet: address,
         permissionsContext: context, status: 'active',
@@ -92,6 +133,8 @@ export function AgentBridge() {
       setGranting(false)
     }
   }, [walletClient, address, chainId, budget, expiry, supportedChain, saveAgentConfig])
+
+
 
   const handleStartCrawl = useCallback(async () => {
     setCrawling(true)
@@ -302,62 +345,12 @@ export function AgentBridge() {
         </button>
       </div>
 
-      {/* ═══ Console Output ═══ */}
+      {/* ═══ Crawl Result ═══ */}
       <AnimatePresence>
         {latestJob && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }} className="console-bg rounded-2xl overflow-hidden mb-6">
-            {/* Console header */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-surface-200/20">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-                <span className="ml-2 text-[10px] text-surface-500 font-mono">
-                  {latestJob.id}: "{latestJob.query}"
-                </span>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                latestJob.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
-                latestJob.status === 'failed' ? 'bg-red-500/10 text-red-400' :
-                'bg-yellow-500/10 text-yellow-400'
-              }`}>
-                {latestJob.status === 'running' ? '● LIVE' : latestJob.status.toUpperCase()}
-              </span>
-            </div>
-            {/* Console body */}
-            <div className="p-4 max-h-80 overflow-auto">
-              {latestJob.output ? (
-                <pre className="text-[11px] text-surface-300 font-mono whitespace-pre-wrap leading-relaxed">
-                  {latestJob.output.slice(-3000)}
-                </pre>
-              ) : (
-                <div className="flex items-center gap-2 text-xs text-surface-500">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Waiting for output...
-                </div>
-              )}
-              {latestJob.status === 'running' && (
-                <span className="animate-blink text-brand-400 text-sm">▊</span>
-              )}
-            </div>
-          </motion.div>
+          <CrawlResultCard job={latestJob} />
         )}
       </AnimatePresence>
-
-      {/* ═══ CLI Fallback ═══ */}
-      <div className="glass rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Terminal className="w-4 h-4 text-surface-400" />
-          <h3 className="text-sm font-semibold text-surface-300">Or run from terminal</h3>
-        </div>
-        <div className="console-bg rounded-lg p-3 font-mono text-[11px] text-surface-400">
-          <p className="text-surface-500 mb-1"># Start all services</p>
-          <p className="text-white">make all</p>
-          <p className="text-surface-500 mb-1 mt-2"># Run agent with Venice AI</p>
-          <p className="text-white">cd agent && npx tsx src/index.ts "Asian crypto sentiment"</p>
-        </div>
-      </div>
     </motion.div>
   )
 }

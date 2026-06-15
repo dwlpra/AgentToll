@@ -52,3 +52,5 @@ mock
 ui/dist/ 
 # Venice API reference doc (pasted, not project source)
 model.md
+gateway/paycrawl-gw
+payments.jsonl

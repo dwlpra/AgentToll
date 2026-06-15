@@ -5,11 +5,23 @@ import { Landing } from './pages/Landing'
 import { ProviderDashboard } from './pages/ProviderDashboard'
 import { AgentBridge } from './pages/AgentBridge'
 import { Articles } from './pages/Articles'
+import { RolePickerModal } from './components/RolePickerModal'
+import { RoleProvider, useRole } from './hooks/useRole'
+import { useAccount } from 'wagmi'
 
-export default function App() {
+function AppInner() {
+  const { address } = useAccount()
+  const { needsRoleSelection, setRole, isWhitelistedProvider } = useRole()
+
   return (
     <div className="min-h-screen text-white">
       <Navbar />
+      <RolePickerModal
+        open={needsRoleSelection && !!address}
+        address={address ?? ''}
+        isWhitelistedProvider={isWhitelistedProvider}
+        onSelect={setRole}
+      />
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -19,5 +31,13 @@ export default function App() {
         </Routes>
       </AnimatePresence>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <RoleProvider>
+      <AppInner />
+    </RoleProvider>
   )
 }

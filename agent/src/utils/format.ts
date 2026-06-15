@@ -90,7 +90,10 @@ export function skipDecision(resource: string, reason: string): string {
 export function paymentConfirmed(amount: string, txHash?: string): string {
   let out = `${color("  💰 Payment confirmed", C.brightGreen + C.bold)} — ${color(`$${amount}`, C.brightYellow)}`;
   if (txHash) {
-    out += ` ${color(`tx:${txHash.slice(0, 10)}...`, C.dim)}`;
+    const shortTx = txHash.slice(0, 10) + "...";
+    const link = `https://basescan.org/tx/${txHash}`;
+    out += ` ${color(`tx:${shortTx}`, C.dim)}`;
+    out += `\n${color(`  🔗 ${link}`, C.underline + C.brightBlue)}`;
   }
   return out;
 }

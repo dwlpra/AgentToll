@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Always load .env from the agent/ directory regardless of the current
 // working directory, so the agent can be launched from anywhere.
-dotenvConfig({ path: resolve(__dirname, "../.env") });
+dotenvConfig({ path: resolve(__dirname, "../.env"), quiet: true });
 
 export const config = {
   // === GATEWAY (x402 paywall server) ===
@@ -33,7 +33,7 @@ export const config = {
   // The API is OpenAI-compatible, so the openai SDK is used directly.
   veniceApiKey: process.env.VENICE_API_KEY || "",
   veniceBaseUrl: "https://api.venice.ai/api/v1",
-  veniceModel: process.env.VENICE_MODEL || "zai-org-glm-5",
+  veniceModel: process.env.VENICE_MODEL || "llama-3.3-70b",
 
   // === BLOCKCHAIN ===
   // Base Mainnet: chainId=8453, chainIdHex=0x2105 (DEFAULT)

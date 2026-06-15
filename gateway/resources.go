@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -253,6 +255,13 @@ func (pc *ProviderConfigManager) HandlePost(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Whitelist check: only the authorized provider wallet can register
+	if !strings.EqualFold(req.Wallet, pc.wallet) {
+		log.Printf("[provider-config] REJECTED wallet %s (not whitelisted)", req.Wallet)
+		http.Error(w, `{"error":"wallet not authorized as provider"}`, http.StatusForbidden)
+		return
+	}
+
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 	pc.wallet = req.Wallet
@@ -328,9 +337,10 @@ func (cm *CrawlManager) HandleCrawl(w http.ResponseWriter, r *http.Request) {
 		// Requires VENICE_API_KEY in the agent's .env (real Venice AI reasoning).
 		go func() {
 			cmd := exec.Command("npx", "tsx", "src/index.ts", query)
-			// Gateway runs from gateway/ dir (via Makefile: cd gateway && go run .)
-			// So agent path is ../agent/
-			cmd.Dir = "../agent"
+			// Gateway runs from PM2 with cwd=/home/clawuser/PayCrawl
+			// So agent path is ./agent/
+			cmd.Dir = "./agent"
+			cmd.Env = append(os.Environ(), "DOTENVX_QUIET=true")
 			// Don't override VENICE_API_KEY — let agent .env decide
 			output, err := cmd.CombinedOutput()
 

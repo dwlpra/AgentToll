@@ -53,6 +53,9 @@ export function useGatewayApi() {
   const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null)
   const [providerWallet, setProviderWallet] = useState<string>('')
   const [crawlJobs, setCrawlJobs] = useState<CrawlJob[]>([])
+  const [purchases, setPurchases] = useState<any[]>([])
+  const [purchaseRevenue, setPurchaseRevenue] = useState('0.00')
+  const [purchaseCount, setPurchaseCount] = useState(0)
   const [loading, setLoading] = useState(false)
 
   const fetchResources = useCallback(async () => {
@@ -189,6 +192,18 @@ export function useGatewayApi() {
     }
   }, [fetchCrawlStatus])
 
+  const fetchPurchases = useCallback(async () => {
+    try {
+      const res = await fetch(`${GATEWAY_URL}/api/purchases`)
+      if (res.ok) {
+        const data = await res.json()
+        setPurchases(data.purchases ?? [])
+        setPurchaseRevenue(data.totalRevenue ?? '0.00')
+        setPurchaseCount(data.count ?? 0)
+      }
+    } catch {}
+  }, [])
+
   const refreshAll = useCallback(async () => {
     setLoading(true)
     await Promise.all([
@@ -197,22 +212,27 @@ export function useGatewayApi() {
       fetchAgentConfig(),
       fetchProviderConfig(),
       fetchCrawlStatus(),
+      fetchPurchases(),
     ])
     setLoading(false)
-  }, [fetchResources, fetchDashboard, fetchAgentConfig, fetchProviderConfig, fetchCrawlStatus])
+  }, [fetchResources, fetchDashboard, fetchAgentConfig, fetchProviderConfig, fetchCrawlStatus, fetchPurchases])
 
   useEffect(() => {
     refreshAll()
     const interval = setInterval(() => {
       fetchDashboard()
       fetchCrawlStatus()
+      fetchPurchases()
     }, 5000)
     return () => clearInterval(interval)
-  }, [refreshAll, fetchDashboard, fetchCrawlStatus])
+  }, [refreshAll, fetchDashboard, fetchCrawlStatus, fetchPurchases])
 
   return {
     resources,
     dashboard,
+    purchases,
+    purchaseRevenue,
+    purchaseCount,
     agentConfig,
     providerWallet,
     crawlJobs,

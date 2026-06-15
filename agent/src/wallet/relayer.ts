@@ -1,52 +1,40 @@
 /**
  * relayer.ts — 1Shot Permissionless Relayer client
  *
- * The 1Shot relayer executes ERC-7710 transactions on the user's behalf
- * GASLESSLY (the user never pays gas).
- *
- * How it works:
- * 1. The user grants permissions via MetaMask (ERC-7715) → receives a permissionsContext
- * 2. The agent sends permissionsContext + calldata to the relayer
- * 3. The relayer decodes the delegation from the context
- * 4. The relayer builds and submits the transaction to the blockchain
- * 5. The relayer pays the gas (sponsor)
- * 6. The relayer notifies the webhook when finished
- *
- * API: JSON-RPC over HTTP
- * Testnet: https://relayer.1shotapi.dev/relayers
- * Mainnet: https://relayer.1shotapi.com/relayers
+ * Correct RPC formats per 1Shot public relayer API:
+ * - params are objects (not wrapped in arrays)
+ * - relayer_getFeeData: { chainId, token }
+ * - relayer_send7710Transaction: { chainId, context, transactions, destinationUrl }
+ * - relayer_getStatus: taskId string
  */
 
 import { config } from "../config.js";
 
 // === RESPONSE TYPES ===
 
-// Fee data returned by the relayer
 interface FeeData {
-  gasPrice: string;  // current gas price
-  rate: number;      // exchange rate
-  minFee: string;    // minimum fee
-  expiry: number;    // fee-quote expiry timestamp
-  context: string;   // context to attach to the transaction
+  gasPrice: string;
+  rate: number;
+  minFee: string;
+  expiry: number;
+  context: string;
+  feeCollector?: string;
+  targetAddress?: string;
+  token?: { address: string; decimals: number; symbol?: string };
 }
 
-// Relayer task status
 interface RelayerTask {
   taskId: string;
-  status: string;    // "pending" | "confirmed" | "success" | "failed" | "reverted"
-  txHash?: string;   // on-chain transaction hash (available after confirmation)
+  status: string;
+  txHash?: string;
 }
 
-// JSON-RPC request ID counter
 let rpcId = 0;
 
 /**
- * Generic JSON-RPC call to the 1Shot relayer.
- *
- * 1Shot uses the JSON-RPC protocol (same as Ethereum RPC).
- * Each call carries a method name + params and returns either a result or an error.
+ * Generic JSON-RPC call. Params can be object or array.
  */
-async function rpcCall(method: string, params: any[]): Promise<any> {
+async function rpcCall(method: string, params: unknown): Promise<any> {
   let res: Response;
   try {
     res = await fetch(config.relayerBaseUrl, {
@@ -75,92 +63,82 @@ async function rpcCall(method: string, params: any[]): Promise<any> {
   return data.result;
 }
 
-/**
- * OneShotRelayer — Client for interacting with the 1Shot relayer API.
- *
- * Available methods:
- * - getFeeData()           → fees and current gas price
- * - send7710Transaction()  → submit an ERC-7710 transaction for gasless execution
- * - getStatus()            → check the status of a task
- * - pollStatus()           → wait until a task reaches a final state
- */
 export class OneShotRelayer {
-
   /**
-   * Fetch fee data for a transaction.
-   * Returns a fee quote that remains valid for a short period.
+   * Fetch fee data for a chain+token.
+   * Correct format: params = { chainId: "8453", token: "0x..." }
    */
   async getFeeData(chainId: string, tokenAddress: string): Promise<FeeData> {
-    return rpcCall("relayer_getFeeData", [{ chainId, tokenAddress }]);
+    return rpcCall("relayer_getFeeData", { chainId, token: tokenAddress });
   }
 
   /**
-   * Submit an ERC-7710 transaction to the relayer for gasless execution.
-   *
-   * This is the primary method — the agent calls it to pay for a resource.
-   *
-   * Parameters:
-   * - chainId: hex format (e.g. "0x14a34")
-   * - from: smart account address (the agent wallet)
-   * - to: USDC contract address
-   * - data: encoded transfer calldata
-   * - permissionContext: delegation data from the MetaMask grant
-   * - context: fee-data context returned by getFeeData()
-   * - destinationUrl: webhook URL for confirmation notifications
-   *
-   * Returns: a taskId for status tracking.
+   * Submit an ERC-7710 transaction.
+   * Correct format per skill examples:
+   *   params = {
+   *     chainId: "8453",
+   *     context: feeData.context,
+   *     transactions: [{
+   *       permissionContext: [...delegations],
+   *       executions: [{ target, value, data }, ...]
+   *     }],
+   *     destinationUrl?: webhook
+   *   }
    */
   async send7710Transaction(params: {
     chainId: string;
-    from: string;
-    to: string;
-    data: string;
-    value?: string;
-    permissionContext: any[];
-    authorizationList?: any[];
     context?: string;
+    transactions: Array<{
+      permissionContext: any[];
+      executions: Array<{
+        target: string;
+        value: string;
+        data: string;
+      }>;
+    }>;
     destinationUrl?: string;
-    memo?: string;
   }): Promise<{ taskId: string }> {
     const payload = {
-      ...params,
+      chainId: params.chainId,
+      context: params.context,
+      transactions: params.transactions,
       destinationUrl: params.destinationUrl || `${config.gatewayUrl}/webhook`,
-      memo: params.memo || `pay-per-crawl-${Date.now()}`,
     };
-    return rpcCall("relayer_send7710Transaction", [payload]);
+    const result = await rpcCall("relayer_send7710Transaction", payload);
+    console.log("[relayer] send7710 raw result:", JSON.stringify(result).slice(0, 300));
+    // Result may be a bare string (taskId) or an object {taskId}
+    if (typeof result === "string") return { taskId: result };
+    if (result && typeof result === "object") return { taskId: result.taskId || result.task_id || result.id || JSON.stringify(result) };
+    return { taskId: String(result || "") };
   }
 
   /**
    * Fetch the current status of a task.
    */
   async getStatus(taskId: string): Promise<RelayerTask> {
-    const result = await rpcCall("relayer_getStatus", [taskId]);
+    // relayer_getStatus expects { id: taskId }
+    const result = await rpcCall("relayer_getStatus", { id: taskId });
     return {
       taskId,
-      status: result.status,
-      txHash: result.txHash,
+      status: String(result.status),
+      txHash: result.receipt?.transactionHash || result.txHash,
     };
   }
 
   /**
-   * Poll the status until it reaches a final state
-   * (confirmed/success/failed/reverted) or the timeout elapses.
-   *
-   * Used after send7710Transaction to wait for on-chain confirmation.
+   * Poll until final state or timeout.
    */
   async pollStatus(taskId: string, timeoutMs: number): Promise<RelayerTask> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       try {
         const status = await this.getStatus(taskId);
-        if (["confirmed", "success", "failed", "reverted"].includes(status.status)) {
+      if (["200", "confirmed", "success", "1"].includes(String(status.status))) {
           return status;
         }
       } catch (err) {
-        // Network error during poll — log and keep retrying
         console.error(`[relayer] poll error for ${taskId}: ${err instanceof Error ? err.message : err}`);
       }
-      // Wait 2 seconds before the next poll to avoid hammering the relayer
       await new Promise((r) => setTimeout(r, 2000));
     }
     return { taskId, status: "timeout" };

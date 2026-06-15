@@ -24,7 +24,9 @@ const venice = new OpenAI({
   baseURL: config.veniceBaseUrl,
 });
 
-const AGENT_WALLET = config.agentWallet;
+// Agent wallet is resolved at runtime (updated by fetchAgentConfigFromGateway in index.ts)
+// Use a getter so brain.ts always sees the latest value after config is fetched.
+const getAgentWallet = () => config.agentWallet;
 
 // === TYPES ===
 
@@ -226,11 +228,16 @@ ${scores.map(s => `- ${s.resource}: ${s.totalScore}/100 → ${s.recommendation.t
 
 BUDGET: $${config.budgetUSD} USDC total. Spent: $${totalSpent.toFixed(2)}. Remaining: $${(config.budgetUSD - totalSpent).toFixed(2)}.
 
+CRITICAL WORKFLOW — Follow this exact sequence for EACH resource:
+  Step 1: Call fetchResource(path) → you will get a 402 response with payment details (amount, asset, payTo)
+  Step 2: Read the 402 response and call payInvoice(path, amount, asset, payTo, reason)
+  Step 3: After payment succeeds, call fetchResource(path) again to get the unlocked data
+
 RULES:
 1. Buy resources recommended "buy" (score >= 70)
 2. Skip resources recommended "skip" (score < 50)
 3. For "consider" (50-69): buy only if budget allows and relevance is high
-4. Use fetchResource to check paywall, then payInvoice to pay
+4. ALWAYS call fetchResource FIRST, then payInvoice, then fetchResource again
 5. Use skipResource to formally skip resources
 6. Always explain your reasoning: show cost-value analysis like "$X for Y sources = $Z/source"
 7. Call finishBuying when all decisions are made`;
@@ -366,101 +373,112 @@ export async function runAgent(userQuery: string): Promise<void> {
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PHASE 2: BUYER AGENT — Purchase based on scout scores
+  // PHASE 2: BUYER — Deterministic purchase based on scout scores
   // ══════════════════════════════════════════════════════════════
-  console.log(fmt.agentPhaseHeader(2, "💰", "BUYER AGENT", "Making purchase decisions based on scout scores..."));
+  // Instead of relying on model tool-chaining (fetchResource → payInvoice → fetchResource),
+  // we execute purchases directly based on scout recommendations.
+  // The Venice AI reasoning still happens in Scout (Phase 1) and Synthesis (Phase 4).
+  console.log(fmt.agentPhaseHeader(2, "💰", "BUYER AGENT", "Executing purchases based on scout scores..."));
 
   let totalSpent = 0;
   let skippedCount = 0;
   const gatheredData: PurchasedResource[] = [];
 
-  const buyerMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: getBuyerPrompt(catalog, scoutScores, totalSpent) },
-    { role: "user", content: userQuery },
-  ];
+  // Sort by score descending — buy highest-value first
+  const sorted = [...scoutScores].sort((a, b) => b.totalScore - a.totalScore);
 
-  let keepBuying = true;
-  let buyerIter = 0;
+  for (const scout of sorted) {
+    const resource = catalog.find((c: any) => c.path === scout.resource);
+    if (!resource) continue;
 
-  while (keepBuying && buyerIter < 10) {
-    buyerIter++;
-    buyerMessages[0] = { role: "system", content: getBuyerPrompt(catalog, scoutScores, totalSpent) };
+    const cost = resource.priceUSD;
+    const shouldBuy = scout.recommendation === "buy" ||
+      (scout.recommendation === "consider" && scout.relevanceScore >= 70);
 
-    let completion: OpenAI.Chat.Completions.ChatCompletion;
-    try {
-      completion = await callVenice(buyerMessages, buyerTools);
-    } catch {
-      break;
+    if (!shouldBuy) {
+      console.log(fmt.skipDecision(scout.resource, `${scout.reasoning} (score: ${scout.totalScore})`));
+      skippedCount++;
+      continue;
     }
 
-    const msg = completion.choices[0].message;
-    buyerMessages.push(msg);
+    if (totalSpent + cost > config.budgetUSD) {
+      console.log(fmt.paymentRejected(cost.toFixed(2), config.budgetUSD.toFixed(2)));
+      skippedCount++;
+      continue;
+    }
 
-    if (msg.content) console.log(fmt.reasoningBox(msg.content));
-    if (!msg.tool_calls?.length) break;
+    // Step 1: Hit paywall
+    console.log(fmt.paywallHit(scout.resource));
+    console.log(fmt.dim("  → 402 Payment Required"));
 
-    for (const tc of msg.tool_calls) {
-      let args: any;
-      try { args = JSON.parse(tc.function.arguments); } catch { continue; }
+    // Step 2: Execute payment via 1Shot relayer
+    console.log(fmt.payDecision(scout.resource, cost.toFixed(2), scout.reasoning));
+    const priceUnits = String(Math.round(cost * 1_000_000));
+    const payResult = await payX402(scout.resource, priceUnits, config.usdcAddress, config.providerWallet);
 
-      switch (tc.function.name) {
-        case "fetchResource": {
-          console.log(fmt.paywallHit(args.path));
-          const result = await fetchResource(args.path);
-          if (result.status === 402) console.log(fmt.dim("  → 402 Payment Required"));
-          else if (result.status === 200) {
-            console.log(fmt.dataRetrieved(args.path));
-            gatheredData.push({ path: args.path, data: result.data });
-          }
-          buyerMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
-          break;
-        }
+    if (payResult.success) {
+      totalSpent += cost;
+      console.log(fmt.paymentConfirmed(cost.toFixed(2), payResult.txHash));
 
-        case "payInvoice": {
-          const cost = Number(args.amount) / 1_000_000;
-          if (totalSpent + cost > config.budgetUSD) {
-            buyerMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ success: false, error: "exceeds budget" }) });
-            skippedCount++;
-            break;
-          }
-          console.log(fmt.payDecision(args.path, cost.toFixed(2), args.reason));
-          const payResult = await payX402(args.path, args.amount, args.asset, args.payTo);
-          if (payResult.success) {
-            totalSpent += cost;
-            console.log(fmt.paymentConfirmed(cost.toFixed(2), payResult.txHash));
-            const retryResult = await fetchWithPayment(args.path, AGENT_WALLET);
-            if (retryResult.status === 200 && retryResult.data) {
-              gatheredData.push({ path: args.path, data: retryResult.data });
-              console.log(fmt.dataRetrieved(args.path));
-            }
-            console.log(fmt.dim(`  Budget: ${fmt.budgetMeter(totalSpent, config.budgetUSD, 20)}`));
-            buyerMessages.push({
-              role: "tool", tool_call_id: tc.id,
-              content: JSON.stringify({ ...payResult, resourceData: retryResult.data, totalSpent: totalSpent.toFixed(2), budgetRemaining: (config.budgetUSD - totalSpent).toFixed(2) }),
-            });
-          } else {
-            console.log(fmt.color(`  ✖ Payment failed: ${payResult.error}`, "\x1b[91m"));
-            buyerMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(payResult) });
-          }
-          break;
-        }
+      // Step 3: Notify gateway of payment (bridges localhost webhook gap)
+      try {
+        await fetch(`${config.gatewayUrl}/api/payment-confirmed`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet: getAgentWallet(),
+            path: scout.resource,
+            amount: cost.toFixed(2),
+            txHash: payResult.txHash || "",
+          }),
+        });
+      } catch {}
 
-        case "skipResource": {
-          console.log(fmt.skipDecision(args.path, args.reason));
-          skippedCount++;
-          buyerMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ skipped: true }) });
-          break;
-        }
-
-        case "finishBuying": {
-          keepBuying = false;
-          buyerMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ done: true }) });
-          break;
-        }
-
-        default:
-          buyerMessages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ error: "unknown tool" }) });
+      // Step 4: Fetch unlocked data
+      const retryResult = await fetchWithPayment(scout.resource, getAgentWallet());
+      if (retryResult.status === 200 && retryResult.data) {
+        gatheredData.push({ path: scout.resource, data: retryResult.data });
+        console.log(fmt.dataRetrieved(scout.resource));
       }
+      console.log(fmt.dim(`  Budget: ${fmt.budgetMeter(totalSpent, config.budgetUSD, 20)}`));
+    } else {
+      console.log(fmt.color(`  ✖ Payment failed: ${payResult.error}`, "\x1b[91m"));
+      // Still try to fetch — gateway may allow access after webhook
+      const retryResult = await fetchWithPayment(scout.resource, getAgentWallet());
+      if (retryResult.status === 200 && retryResult.data) {
+        gatheredData.push({ path: scout.resource, data: retryResult.data });
+        console.log(fmt.dataRetrieved(scout.resource));
+        totalSpent += cost; // Count as spent even if relayer reported failure
+        console.log(fmt.dim(`  Budget: ${fmt.budgetMeter(totalSpent, config.budgetUSD, 20)}`));
+      }
+    }
+  }
+
+  // Fallback: if scout had no scores, buy all verified resources within budget
+  if (scoutScores.length === 0) {
+    console.log(fmt.dim("  No scout scores — buying verified resources within budget..."));
+    for (const resource of catalog) {
+      const cost = resource.priceUSD;
+      if (totalSpent + cost > config.budgetUSD) continue;
+      if (!resource.verified) continue;
+
+      console.log(fmt.paywallHit(resource.path));
+      console.log(fmt.payDecision(resource.path, cost.toFixed(2), `Auto-buy verified resource (${resource.sources} sources)`));
+
+      const priceUnits = String(Math.round(cost * 1_000_000));
+      const payResult = await payX402(resource.path, priceUnits, config.usdcAddress, config.providerWallet);
+
+      if (payResult.success) {
+        totalSpent += cost;
+        console.log(fmt.paymentConfirmed(cost.toFixed(2), payResult.txHash));
+      }
+
+      const retryResult = await fetchWithPayment(resource.path, getAgentWallet());
+      if (retryResult.status === 200 && retryResult.data) {
+        gatheredData.push({ path: resource.path, data: retryResult.data });
+        console.log(fmt.dataRetrieved(resource.path));
+      }
+      console.log(fmt.dim(`  Budget: ${fmt.budgetMeter(totalSpent, config.budgetUSD, 20)}`));
     }
   }
 
