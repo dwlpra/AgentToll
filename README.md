@@ -389,6 +389,7 @@ Judges can review the core implementation directly:
 **MetaMask Smart Accounts Kit / ERC-7715:**
 - [Request Advanced Permissions (UI)](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — raw `window.ethereum.request` with `wallet_requestExecutionPermissions`
 - [Decode Delegations via SAK](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — `decodeDelegations` from `@metamask/smart-accounts-kit/utils`
+- [Redeem Advanced Permissions (Agent)](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — permissionContext passed to `relayer_send7710Transaction` for gasless ERC-7710 execution
 
 **1Shot Permissionless Relayer / ERC-7710:**
 - [Relayer RPC Client](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — getFeeData, send7710Transaction, getStatus
