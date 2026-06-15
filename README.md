@@ -8,12 +8,11 @@
 
 Built for the **MetaMask Smart Accounts Kit × 1Shot API × Venice AI Dev Cook Off**
 
-[![Base](https://img.shields.io/badge/Chain-Base-0052FF)](https://docs.base.org)
+[![Base](https://img.shields.io/badge/Chain-Base_Mainnet-0052FF)](https://docs.base.org)
 [![MetaMask Kit](https://img.shields.io/badge/MetaMask-Smart_Accounts_Kit-v1.6.0-FF6B00)](https://docs.metamask.io/smart-accounts-kit/)
 [![Venice AI](https://img.shields.io/badge/AI-Venice_API-7C3AED)](https://venice.ai)
 [![1Shot](https://img.shields.io/badge/Relayer-1Shot_Permissionless-10B981)](https://1shotapi.com)
 [![x402](https://img.shields.io/badge/Protocol-x402-F59E0B)](https://x402.org)
-[![Tests](https://img.shields.io/badge/Tests-13%2F13-passing-22C55E)]()
 
 </div>
 
@@ -56,10 +55,10 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 
 | Track | Prize | What We Built |
 |-------|-------|---------------|
-| **Best x402 + ERC-7710** | $3,000 | Full x402 protocol (HTTP 402 + accepts[]), ERC-7710 gasless execution via 1Shot relayer, webhook confirmation |
-| **Best use of Venice AI** | $3,000 | 4-phase multi-agent pipeline (Scout → Buyer → Analyst → Synthesizer), 7 function-call tools, budget-aware cost/value reasoning, multi-source synthesis |
+| **Best x402 + ERC-7710** | $3,000 | Full x402 protocol (HTTP 402 + accepts[]), ERC-7710 gasless execution via 1Shot relayer, on-chain payment confirmation |
+| **Best use of Venice AI** | $3,000 | 4-phase multi-agent pipeline (Scout → Buyer → Analyst → Synthesizer), function-calling tools, budget-aware cost/value reasoning, multi-source synthesis |
 | **Best Agent** | $3,000 | Autonomous loop: plan → crawl → reason → pay → synthesize. Budget management, quality-maximizing decisions |
-| **Best Use of 1Shot Relayer** | $1,000 USDC | Full JSON-RPC client (getFeeData, send7710, pollStatus), gasless execution, webhook integration |
+| **Best Use of 1Shot Relayer** | $1,000 USDC | Full JSON-RPC client (getFeeData, send7710, getStatus), gasless execution, fee + work legs |
 
 ---
 
@@ -72,23 +71,27 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 │  1. SETUP (one-time, 30 seconds)                                │
 │  Open browser → Connect MetaMask Flask → Grant Permissions     │
 │  → Spending cap: $1.00 USDC / 24h → permissionsContext stored  │
+│  → SAK decodeDelegations → gateway stores structured context    │
 ├─────────────────────────────────────────────────────────────────┤
 │  2. CRAWL                                                       │
 │  Agent fetches /catalog → sees 3 resources with prices         │
 │  → GET /reports/asia-daily → 402 Payment Required              │
 │  → GET /reports/deep-dive  → 402 Payment Required              │
 ├─────────────────────────────────────────────────────────────────┤
-│  3. REASON (Venice AI)                                          │
-│  "asia-daily: $0.10, fresh 4h, 3 verified src → BUY"          │
-│  "quick-take: $0.40, stale 9d, 1 unverified → SKIP"           │
-│  "deep-dive:  $0.60, fresh today, 5 verified → BUY"           │
+│  3. REASON — Phase 1: Scout (Venice AI)                         │
+│  "asia-daily: $0.10, fresh 4h, 3 verified src → BUY (92)"     │
+│  "quick-take: $0.40, stale 9d, 1 unverified → SKIP (22)"      │
+│  "deep-dive:  $0.60, fresh today, 5 verified → BUY (91)"      │
 ├─────────────────────────────────────────────────────────────────┤
-│  4. PAY (gasless, no popup)                                     │
+│  4. PAY — Phase 2: Buyer (deterministic execution)              │
+│  Score ≥ 70 → auto-execute: 402 → payX402 → fetch data         │
+│  Score < 50 → skip with AI reasoning                           │
 │  encodeTransfer(USDC, provider, 100000)                         │
-│  → send7710Transaction(calldata + permissionsContext)           │
-│  → 1Shot relayer sponsors gas → txHash confirmed                │
+│  → send7710Transaction(calldata + permissionContext)            │
+│  → 1Shot relayer sponsors gas → txHash confirmed on Base        │
+│  → POST /api/payment-confirmed → gateway authorizes access      │
 ├─────────────────────────────────────────────────────────────────┤
-│  5. SYNTHESIZE                                                  │
+│  5. ANALYZE + SYNTHESIZE — Phase 3 & 4 (Venice AI)              │
 │  Venice AI combines 2 purchased reports into analysis           │
 │  → Budget: $0.70 / $1.00 (30% remaining)                       │
 └─────────────────────────────────────────────────────────────────┘
@@ -96,7 +99,7 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 
 ### What Makes This Special
 
-**The agent doesn't just buy everything.** Venice AI makes nuanced value judgments:
+**The agent doesn't just buy everything.** Venice AI (GLM-5) makes nuanced value judgments:
 
 | Resource | Price | Quality | Decision | Cost Analysis |
 |---|---|---|---|---|
@@ -110,73 +113,87 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 
 ## Architecture
 
-```mermaid
-graph TB
-    subgraph Setup["Setup (One-Time)"]
-        Browser["React UI<br/>localhost:5173"]
-        MM["MetaMask<br/>Smart Accounts Kit"]
-        Browser -->|"Grant ERC-7715"| MM
-        MM -->|"permissionsContext"| GW2["Gateway :19090"]
-        GW2 -->|"Store"| Ctx[("agent-config")]
-    end
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     SETUP (One-Time)                          │
+│                                                              │
+│  React UI ( :5173 )          MetaMask Flask                  │
+│  ├── Connect wallet ───────→ Smart Account (EIP-7702)       │
+│  ├── Grant ERC-7715 ───────→ permissionsContext              │
+│  │   (raw window.ethereum     │                               │
+│  │    .request, no viem)      ↓                               │
+│  │                        decodeDelegations()                │
+│  │                        (SAK utils)                        │
+│  └── POST /api/agent-config──→ Gateway stores decoded JSON   │
+└──────────────────────────────────────────────────────────────┘
 
-    subgraph Execution["Autonomous Execution"]
-        Agent["Agent CLI"]
-        Agent -->|"GET /resource"| GW["Gateway :19090"]
-        GW -->|"402 + accepts[]"| Agent
-        Agent -->|"reason"| Venice["Venice AI"]
-        Venice -->|"pay / skip"| Agent
-        Agent -->|"transfer + context"| Relayer["1Shot Relayer"]
-        Relayer -->|"gasless tx"| Chain["Base"]
-        Agent -->|"webhook"| GW
-        GW -->|"proxy"| API["Mock API :18091"]
-        GW -->|"data"| Agent
-    end
+┌──────────────────────────────────────────────────────────────┐
+│                  AUTONOMOUS EXECUTION                         │
+│                                                              │
+│  Agent CLI (Node.js + Venice AI)                             │
+│  ├── GET /catalog ──→ Gateway ──→ Mock API (:18091)         │
+│  ├── Phase 1: Scout (Venice AI evaluates all resources)     │
+│  ├── Phase 2: Buyer (deterministic, code-driven)            │
+│  │   ├── GET /resource → 402 + accepts[]                    │
+│  │   ├── relayer_getFeeData(chainId, token)                 │
+│  │   ├── relayer_send7710Transaction({                      │
+│  │   │     chainId, context,                                │
+│  │   │     transactions: [{                                 │
+│  │   │       permissionContext, executions: [fee, work]     │
+│  │   │     }]                                               │
+│  │   │   })                                                 │
+│  │   ├── relayer_getStatus({id}) → 200 + txHash             │
+│  │   ├── POST /api/payment-confirmed → authorize            │
+│  │   └── GET /resource (X-AUTHORIZED-WALLET) → 200 + data   │
+│  ├── Phase 3: Analyst (Venice AI reviews quality/ROI)       │
+│  └── Phase 4: Synthesis (Venice AI writes final report)     │
+│                                                              │
+│  1Shot Relayer ──gasless tx──→ Base Mainnet (USDC)         │
+└──────────────────────────────────────────────────────────────┘
 
-    subgraph Provider["Content Provider View"]
-        GW -->|"revenue + history"| Dashboard["Provider Dashboard<br/>/dashboard"]
-        Dashboard -->|"tx links"| Explorer["BaseScan"]
-    end
-
-    GW2 -.->|"GET /api/agent-config"| Agent
+┌──────────────────────────────────────────────────────────────┐
+│                   PROVIDER DASHBOARD                          │
+│                                                              │
+│  React UI /provider                                          │
+│  ├── On-chain USDC balance (wagmi contract read)            │
+│  ├── Total Revenue + Purchase count (from payments.jsonl)   │
+│  ├── Purchase History table (tx hash → BaseScan links)      │
+│  └── Resource management (set prices)                        │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Payment Flow
+### Payment Flow (sequence)
 
-```mermaid
-sequenceDiagram
-    participant A as Agent
-    participant G as Gateway
-    participant V as Venice AI
-    participant R as 1Shot Relayer
-
-    A->>G: GET /reports/asia-daily
-    G-->>A: 402 Payment Required + accepts[]
-
-    A->>V: Is this worth $0.10? (fresh, 3 verified sources)
-    V-->>A: YES — pay
-
-    Note over A,R: Gasless payment (no popup)
-    A->>A: encodeTransfer(USDC, provider, 100000)
-    A->>R: send7710Transaction(calldata + permissionsContext)
-    R-->>A: txHash confirmed
-
-    A->>G: POST /webhook (confirm payment)
-    A->>G: GET /reports/asia-daily (authorized)
-    G-->>A: 200 OK + full report
 ```
-
-### Permission Model
-
-```mermaid
-graph LR
-    U["User"] -->|"Grant"| MM["MetaMask"]
-    MM -->|"Spending cap:<br/>$1.00 USDC / 24h"| Ctx["permissionsContext"]
-    Ctx -->|"Stored"| Agent["Agent"]
-    Agent -->|"Autonomous<br/>payment"| TX["On-chain TX"]
-
-    U -->|"Revoke anytime"| Revoke["Revoke"]
-    Revoke -->|"Deletes context"| Agent
+Agent                          Gateway                    1Shot Relayer           Base
+  │                              │                           │                     │
+  │── GET /reports/asia-daily ─→ │                           │                     │
+  │←──── 402 + accepts[] ───────│                           │                     │
+  │                              │                           │                     │
+  │ (Scout says BUY, score 92)   │                           │                     │
+  │                              │                           │                     │
+  │── relayer_getFeeData ──────────────────────────────────→ │                     │
+  │←──── { gasPrice, minFee, context } ─────────────────────│                     │
+  │                              │                           │                     │
+  │── relayer_send7710Transaction ─────────────────────────→ │                     │
+  │   { chainId, context,         │                          │── gasless tx ──────→│
+  │     transactions: [{          │                          │   USDC transfer     │
+  │       permissionContext,      │                          │←── txHash ──────────│
+  │       executions: [fee, work] │                          │                     │
+  │     }]                        │                          │                     │
+  │   }                           │                          │                     │
+  │←──── taskId ─────────────────────────────────────────── │                     │
+  │                              │                           │                     │
+  │── relayer_getStatus({id}) ──────────────────────────────→│                     │
+  │←──── { status: 200, receipt.txHash } ───────────────────│                     │
+  │                              │                           │                     │
+  │── POST /api/payment-confirmed│                           │                     │
+  │   { wallet, path, amount,    │                           │                     │
+  │     txHash }                 │                           │                     │
+  │←──── { authorized } ─────────│                           │                     │
+  │                              │                           │                     │
+  │── GET /reports/asia-daily ──→│ (X-AUTHORIZED-WALLET)    │                     │
+  │←──── 200 + full report ─────│                           │                     │
 ```
 
 ---
@@ -186,7 +203,7 @@ graph LR
 | Requirement | Version | Install |
 |---|---|---|
 | **Go** | 1.25+ | [go.dev/dl](https://go.dev/dl/) |
-| **Node.js** | 18+ | [nodejs.org](https://nodejs.org/) |
+| **Node.js** | 22+ | [nodejs.org](https://nodejs.org/) |
 | **MetaMask Flask** | 13.5.0+ | [Flask extension](https://metamask.io/flask/) (separate browser profile!) |
 | **Venice API Key** | — | [venice.ai/settings/api](https://venice.ai/settings/api) |
 | **Base USDC** | For payments | Bridge USDC to Base (~$5 is plenty; gas is sponsored by 1Shot) |
@@ -198,8 +215,8 @@ graph LR
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/dwlpra/AgentToll.git
-cd AgentToll
+git clone https://github.com/dwlpra/PayCrawl.git
+cd PayCrawl
 
 # Install dependencies
 cd agent && npm install
@@ -212,17 +229,16 @@ cd ../ui && npm install
 cp .env.example agent/.env
 ```
 
-Edit `agent/.env` with your values:
+Edit `agent/.env`:
 ```env
 # Required
 VENICE_API_KEY=your_venice_api_key_here
-AGENT_WALLET=0xYourMetaMaskAddress
+VENICE_MODEL=zai-org-glm-5
 
 # Optional (defaults work for local dev)
 GATEWAY_URL=http://localhost:19090
-PAYMENT_MODE=live          # live (real on-chain via 1Shot relayer)
+CHAIN_ID=8453                   # 8453 = Base mainnet (default)
 RPC_URL=https://mainnet.base.org
-EXPLORER_URL=https://basescan.org
 ```
 
 Gateway config via environment:
@@ -235,7 +251,7 @@ export MOCK_API_URL=http://localhost:18091
 ### 3. Start Services
 
 ```bash
-# Terminal 1 — Data provider
+# Terminal 1 — Data provider (mock API)
 cd mock-api && go run .
 # → mock-api listening on :18091
 
@@ -248,13 +264,20 @@ cd ui && npm run dev
 # → vite listening on :5173
 ```
 
+Or use PM2 for process management:
+```bash
+pm2 start gateway/gateway --name paycrawl-gw --cwd .
+pm2 start "npx vite" --name paycrawl-ui --cwd ui
+```
+
 ### 4. Setup MetaMask (browser)
 
-1. Open **http://localhost:5173** in a browser with MetaMask installed
+1. Open **http://localhost:5173** in a browser with MetaMask Flask installed
 2. Switch MetaMask to **Base** network
 3. Click the wallet button (top right) → **Connect MetaMask**
-4. Go to **Agent Setup** → set budget → click **Grant Permissions (ERC-7715)**
-5. Approve — MetaMask popup shows spending cap, permissionsContext stored in gateway
+4. Go to **Agent** page → set budget → click **Grant Permissions (ERC-7715)**
+5. Approve — MetaMask popup shows spending cap
+6. The UI decodes the delegation via `@metamask/smart-accounts-kit/utils` (`decodeDelegations`) and stores structured JSON in the gateway
 
 ### 5. Run Agent
 
@@ -262,9 +285,11 @@ cd ui && npm run dev
 cd agent && npx tsx src/index.ts "Summarize this week's Asian crypto market sentiment"
 ```
 
-### 6. View Dashboard
+Or start a crawl from the **Agent** page in the UI.
 
-Open **http://localhost:19090/dashboard** to see revenue, purchases, and transaction history.
+### 6. View Provider Dashboard
+
+Open **http://localhost:5173/provider** to see on-chain balance, revenue, purchase history (with BaseScan links), and resource management.
 
 ---
 
@@ -272,48 +297,58 @@ Open **http://localhost:19090/dashboard** to see revenue, purchases, and transac
 
 | Component | Tech | Role |
 |---|---|---|
-| **Gateway** | Go | x402 middleware, payment authorization, webhook, provider dashboard |
+| **Gateway** | Go 1.25 | x402 middleware, payment authorization, purchase logging (JSONL), provider API |
 | **Mock API** | Go | Paid content endpoints with rich market data (3 reports) |
-| **Agent** | TypeScript + Venice AI | Reasoning engine with function calling, budget management, synthesis |
-| **React UI** | TypeScript + wagmi | MetaMask connection, permission grant, provider dashboard, crawl control |
-| **Smart Accounts** | MetaMask Kit v1.6.0 | ERC-7715 permissions (erc20-token-periodic), ERC-7710 delegation |
-| **Relayer** | 1Shot Permissionless API | Gasless execution via JSON-RPC, webhook confirmation |
-| **Chain** | Base / Base Sepolia | USDC (Circle) payments, 6-decimal precision |
+| **Agent** | TypeScript + Venice AI (GLM-5) | 4-phase pipeline: Scout → Buyer → Analyst → Synthesis |
+| **React UI** | React + wagmi + viem | MetaMask connection, ERC-7715 grant, provider dashboard, crawl terminal + report viewer |
+| **Smart Accounts** | MetaMask SAK v1.6.0 | ERC-7715 permissions (`erc20-token-periodic`), decoded delegations via `decodeDelegations` |
+| **Relayer** | 1Shot Permissionless API | Gasless ERC-7710 execution: `getFeeData`, `send7710Transaction`, `getStatus` |
+| **Chain** | Base Mainnet | USDC (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`), 6-decimal precision |
 
 ---
 
 ## Project Structure
 
 ```
-├── gateway/                  # Go — x402 gateway + REST API + provider dashboard
-│   ├── main.go               # Entry point, CORS, routes, cleanup ticker
+├── gateway/                  # Go — x402 gateway + REST API
+│   ├── main.go               # Entry point, CORS, routes, /api/payment-confirmed,
+│   │                         #   /api/purchases (JSONL-based purchase log)
 │   ├── config.go             # Environment-driven config
 │   ├── catalog.go            # GET /catalog proxy to mock-api
-│   ├── dashboard.go          # Provider dashboard data (revenue, purchases)
-│   ├── resources.go          # REST API: /api/resources, /api/agent-config,
-│   │                         #   /api/provider-config, /api/crawl (managers)
+│   ├── dashboard.go          # Provider dashboard data
+│   ├── resources.go          # REST API: resources, agent-config, crawl
 │   ├── middleware/x402.go    # 402 + accepts[] paywall protocol
-│   ├── payments/store.go     # Authorization store with TTL, purchase recording
-│   ├── payments/webhook.go   # Payment confirmation handler (amount + HMAC validation)
-│   └── proxy/proxy.go        # Reverse proxy to mock-api (X-Gateway-Secret header)
-├── mock-api/                 # Go — paid content data provider
-│   └── main.go               # 3 crypto reports: asia-daily, quick-take, deep-dive
-│                             #   Each with: keyMetrics, analysis sections,
-│                             #   riskFactors, verdict, confidence score
+│   ├── payments/store.go     # Authorization store with TTL
+│   └── proxy/proxy.go        # Reverse proxy to mock-api
+├── mock-api/                 # Go — paid content data provider (3 reports)
 ├── agent/                    # TypeScript — AI agent
-│   ├── src/index.ts          # Entry point with config validation & startup banner
-│   ├── src/brain.ts          # Venice AI 4-phase multi-agent pipeline (7 tools)
-│   ├── src/config.ts         # Centralized config with validateConfig()
-│   ├── src/utils/format.ts   # Terminal formatting: colors, budget meter, reasoning boxes
+│   ├── src/index.ts          # Entry point, config validation, startup banner
+│   ├── src/brain.ts          # 4-phase pipeline: Scout (AI) → Buyer (deterministic)
+│   │                         #   → Analyst (AI) → Synthesis (AI)
+│   ├── src/config.ts         # Centralized config (Base mainnet default)
+│   ├── src/utils/format.ts   # Terminal formatting + BaseScan tx links
 │   ├── src/tools/
-│   │   ├── fetchResource.ts  # HTTP client with 15s timeout, 402 detection
-│   │   └── payX402.ts        # Live on-chain payment via 1Shot relayer (ERC-7710)
+│   │   ├── fetchResource.ts  # HTTP client, 402 detection, authorized fetch
+│   │   └── payX402.ts        # Live on-chain payment via 1Shot relayer
 │   └── src/wallet/
-│       ├── erc20.ts          # ERC-20 transfer calldata encoder (viem)
-│       └── relayer.ts        # 1Shot JSON-RPC client (getFeeData, send7710, pollStatus)
+│       ├── erc20.ts          # ERC-20 transfer calldata encoder
+│       └── relayer.ts        # 1Shot JSON-RPC client (correct param formats)
 ├── ui/                       # React + wagmi — control panel & dashboards
-│   └── src/pages/AgentBridge.tsx  # MetaMask connect + ERC-7715 grant (Smart Accounts Kit)
-└── Makefile                  # one-command orchestration (make all / demo / test)
+│   └── src/
+│       ├── pages/AgentBridge.tsx       # MetaMask connect + ERC-7715 grant
+│       │                               #   (raw window.ethereum.request + SAK decode)
+│       ├── pages/ProviderDashboard.tsx # Revenue, purchases, resource management
+│       ├── components/
+│       │   ├── CrawlResultCard.tsx     # Console terminal + markdown report + PDF
+│       │   ├── Navbar.tsx              # BASE MAINNET badge + role badges
+│       │   ├── PurchaseTable.tsx       # Purchase history with BaseScan links
+│       │   └── RolePickerModal.tsx     # Provider/Agent role selection
+│       ├── hooks/
+│       │   ├── useGatewayApi.ts        # Gateway state (resources, purchases, config)
+│       │   ├── useRole.ts              # Role-based access (Provider/Agent)
+│       │   └── useUsdcBalance.ts       # On-chain USDC balance (wagmi)
+│       └── config/wagmi.ts             # Wagmi config (Base + Base Sepolia)
+└── payments.jsonl            # Purchase log (auto-created, file-based)
 ```
 
 ---
@@ -333,28 +368,51 @@ The gateway implements the [x402](https://x402.org) HTTP-native pay-per-request 
     "maxAmountRequired": "600000",
     "resource": "/reports/deep-dive",
     "description": "Asia Crypto Sentiment — Deep Dive Analysis",
-    "payTo": "0xGATEWAY_WALLET",
+    "payTo": "0xProvider_wallet",
     "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "maxTimeoutSeconds": 60
   }]
 }
 ```
 
-**Authorization:** After payment confirmation via webhook, the gateway checks `X-AUTHORIZED-WALLET` header and grants 5-minute access to the purchased resource.
+**Authorization:** After payment, the agent calls `POST /api/payment-confirmed` with the wallet address, resource path, amount, and txHash. The gateway authorizes the wallet for 5 minutes via `X-AUTHORIZED-WALLET` header.
+
+---
+
+## Key Implementation Details
+
+### Why raw `window.ethereum.request` instead of viem/SAK middleware?
+
+Viem's `createWalletClient` wraps requests with `buildRequest`/`withDedupe`/`withRetry` middleware that can strip fields like `to` and `isAdjustmentAllowed`. The proven approach uses raw `window.ethereum.request({ method: 'wallet_requestExecutionPermissions', params })` and then decodes the result separately via `decodeDelegations` from `@metamask/smart-accounts-kit/utils`.
+
+### Why deterministic buyer instead of AI tool-chaining?
+
+LLM tool-chaining (fetchResource → payInvoice → fetchResource) is unreliable — models often stop after the first 402. The Scout phase (Venice AI) evaluates all resources, then the Buyer phase executes purchases deterministically based on scores. This gives **reliable payment execution** while keeping AI reasoning for evaluation and synthesis.
+
+### Relayer RPC formats
+
+The 1Shot relayer uses specific JSON-RPC param formats:
+- `relayer_getCapabilities`: `params = ["8453"]`
+- `relayer_getFeeData`: `params = { chainId: "8453", token: "0x..." }`
+- `relayer_send7710Transaction`: `params = { chainId, context, transactions: [{ permissionContext, executions: [{ target, value, data }] }] }`
+- `relayer_getStatus`: `params = { id: taskId }`
+
+### Venice AI Model
+
+Uses `zai-org-glm-5` (GLM-5 via Venice API). Excellent at structured evaluation (scout scoring with function-calling tools) and report synthesis. The 4-phase pipeline separates reasoning (AI) from execution (code) for reliability.
 
 ---
 
 ## Chain Configuration
 
-The project runs on **Base mainnet by default** (`CHAIN_ID=8453`, real USDC). Testnet (Base Sepolia, `84532`) is supported — set `CHAIN_ID=84532` in `agent/.env` and `config.ts` auto-selects the matching USDC address, RPC, and chain hex. `config.ts` documents both:
+The project runs on **Base mainnet by default** (`CHAIN_ID=8453`, real USDC). Testnet (Base Sepolia, `84532`) is supported — set `CHAIN_ID=84532` in `agent/.env`.
 
-```typescript
-chainId:    CHAIN_ID === 84532 ? 84532 : 8453              // 8453 = Base (default)
-chainIdHex: CHAIN_ID === 84532 ? "0x14a34" : "0x2105"
-usdcAddress: CHAIN_ID === 84532
-  ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e"          // Base Sepolia USDC
-  : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"          // Base USDC
-```
+| Config | Base Mainnet (default) | Base Sepolia |
+|--------|----------------------|--------------|
+| chainId | 8453 | 84532 |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| RPC | `https://mainnet.base.org` | `https://sepolia.base.org` |
+| Relayer | `https://relayer.1shotapi.com/relayers` | `https://relayer.1shotapi.dev/relayers` |
 
 > **Note on gas:** 1Shot's Permissionless Relayer sponsors gas, so the agent wallet does **not** need ETH — only USDC for the data purchases.
 
@@ -363,13 +421,14 @@ usdcAddress: CHAIN_ID === 84532
 ## Qualification Checklist
 
 - ✅ Uses **MetaMask Smart Accounts Kit** (`@metamask/smart-accounts-kit` v1.6.0)
-- ✅ Implements **ERC-7715 Advanced Permissions** (`erc7715ProviderActions`, `erc20-token-periodic`)
+- ✅ Implements **ERC-7715 Advanced Permissions** (`wallet_requestExecutionPermissions`, `erc20-token-periodic`)
+- ✅ Uses SAK `decodeDelegations` to decode permission context for the relayer
 - ✅ MetaMask Smart Accounts in the **main flow** (permission grant → autonomous payment → data retrieval)
-- ✅ **Venice AI** as core reasoning engine (function calling, cost/value analysis, synthesis)
+- ✅ **Venice AI** as core reasoning engine (GLM-5, function calling, cost/value analysis, synthesis)
 - ✅ **1Shot Permissionless Relayer** for gasless ERC-7710 execution (JSON-RPC)
 - ✅ **x402 protocol** for HTTP-native pay-per-request (402 + accepts[])
 - ✅ **No smart contract deployment** — fully protocol-level via EIP-7702 + ERC-7715 + x402
-- ✅ **13/13 tests passing** — x402 paywall + catalog signal coverage
+- ✅ **Real on-chain transactions** on Base mainnet (verified on BaseScan)
 
 ---
 
