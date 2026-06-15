@@ -382,6 +382,28 @@ The project runs on **Base mainnet by default** (`CHAIN_ID=8453`, real USDC). Te
 
 ---
 
+## Key Code Links
+
+Judges can review the core implementation directly:
+
+**MetaMask Smart Accounts Kit / ERC-7715:**
+- [Request Advanced Permissions (UI)](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — raw `window.ethereum.request` with `wallet_requestExecutionPermissions`
+- [Decode Delegations via SAK](https://github.com/dwlpra/PayCrawl/blob/main/ui/src/pages/AgentBridge.tsx) — `decodeDelegations` from `@metamask/smart-accounts-kit/utils`
+
+**1Shot Permissionless Relayer / ERC-7710:**
+- [Relayer RPC Client](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/wallet/relayer.ts) — getFeeData, send7710Transaction, getStatus
+- [Payment Execution (payX402)](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/tools/payX402.ts) — encode ERC-20 transfer + submit to relayer
+
+**Venice AI:**
+- [4-Phase Pipeline (brain.ts)](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/brain.ts) — Scout, Buyer, Analyst, Synthesis
+- [Agent Config & Venice Setup](https://github.com/dwlpra/PayCrawl/blob/main/agent/src/config.ts) — Venice API + model configuration
+
+**x402 Protocol:**
+- [Gateway x402 Middleware](https://github.com/dwlpra/PayCrawl/blob/main/gateway/middleware/x402.go) — HTTP 402 + accepts[] schema
+- [Payment Confirmation Endpoint](https://github.com/dwlpra/PayCrawl/blob/main/gateway/main.go) — POST /api/payment-confirmed + purchase log
+
+---
+
 ## Qualification Checklist
 
 - ✅ Uses **MetaMask Smart Accounts Kit** (`@metamask/smart-accounts-kit` v1.6.0)
