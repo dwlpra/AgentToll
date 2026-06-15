@@ -66,35 +66,39 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 
 ### The Agent's Decision Process
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. SETUP (one-time, 30 seconds)                                │
-│  Open browser → Connect MetaMask Flask → Grant Permissions     │
-│  → Spending cap: $1.00 USDC / 24h → permissionsContext stored  │
-│  → SAK decodeDelegations → gateway stores structured context    │
-├─────────────────────────────────────────────────────────────────┤
-│  2. CRAWL                                                       │
-│  Agent fetches /catalog → sees 3 resources with prices         │
-│  → GET /reports/asia-daily → 402 Payment Required              │
-│  → GET /reports/deep-dive  → 402 Payment Required              │
-├─────────────────────────────────────────────────────────────────┤
-│  3. REASON — Phase 1: Scout (Venice AI)                         │
-│  "asia-daily: $0.10, fresh 4h, 3 verified src → BUY (92)"     │
-│  "quick-take: $0.40, stale 9d, 1 unverified → SKIP (22)"      │
-│  "deep-dive:  $0.60, fresh today, 5 verified → BUY (91)"      │
-├─────────────────────────────────────────────────────────────────┤
-│  4. PAY — Phase 2: Buyer (deterministic execution)              │
-│  Score ≥ 70 → auto-execute: 402 → payX402 → fetch data         │
-│  Score < 50 → skip with AI reasoning                           │
-│  encodeTransfer(USDC, provider, 100000)                         │
-│  → send7710Transaction(calldata + permissionContext)            │
-│  → 1Shot relayer sponsors gas → txHash confirmed on Base        │
-│  → POST /api/payment-confirmed → gateway authorizes access      │
-├─────────────────────────────────────────────────────────────────┤
-│  5. ANALYZE + SYNTHESIZE — Phase 3 & 4 (Venice AI)              │
-│  Venice AI combines 2 purchased reports into analysis           │
-│  → Budget: $0.70 / $1.00 (30% remaining)                       │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Setup["1. SETUP"]
+        A1["Open Browser, Connect MetaMask Flask"] --> A2["Grant ERC-7715 Permissions"]
+        A2 --> A3["Spending cap 1.00 USDC per 24h"]
+        A3 --> A4["SAK decodeDelegations to Gateway"]
+    end
+
+    subgraph Crawl["2. CRAWL"]
+        B1["Agent fetches catalog"] --> B2["3 resources with prices"]
+        B2 --> B3["GET /reports/asia-daily returns 402"]
+        B2 --> B4["GET /reports/deep-dive returns 402"]
+    end
+
+    subgraph Reason["3. REASON - Scout Phase"]
+        C1["asia-daily scores 92 - BUY"]
+        C2["quick-take scores 22 - SKIP"]
+        C3["deep-dive scores 91 - BUY"]
+    end
+
+    subgraph Pay["4. PAY - Buyer Phase"]
+        D1{"Score above 70?"} -->|Yes| D2["payX402 via 1Shot Relayer"]
+        D1 -->|No| D3["SKIP with AI reasoning"]
+        D2 --> D4["Gasless tx on Base confirmed"]
+        D4 --> D5["POST payment-confirmed"]
+        D5 --> D6["GET resource returns 200"]
+    end
+
+    subgraph Synth["5. ANALYZE and SYNTHESIZE"]
+        E1["Venice AI combines reports"] --> E2["Budget 0.70 of 1.00"]
+    end
+
+    Setup --> Crawl --> Reason --> Pay --> Synth
 ```
 
 ### What Makes This Special
@@ -113,87 +117,76 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     SETUP (One-Time)                          │
-│                                                              │
-│  React UI ( :5173 )          MetaMask Flask                  │
-│  ├── Connect wallet ───────→ Smart Account (EIP-7702)       │
-│  ├── Grant ERC-7715 ───────→ permissionsContext              │
-│  │   (raw window.ethereum     │                               │
-│  │    .request, no viem)      ↓                               │
-│  │                        decodeDelegations()                │
-│  │                        (SAK utils)                        │
-│  └── POST /api/agent-config──→ Gateway stores decoded JSON   │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Setup["Setup One-Time"]
+        UI["React UI port 5173"]
+        MM["MetaMask Flask"]
+        UI -->|Connect wallet| MM
+        UI -->|ethereum request| MM
+        MM -->|permissionsContext| SAK["SAK decodeDelegations"]
+        SAK -->|Decoded JSON| GW1[("Gateway")]
+    end
 
-┌──────────────────────────────────────────────────────────────┐
-│                  AUTONOMOUS EXECUTION                         │
-│                                                              │
-│  Agent CLI (Node.js + Venice AI)                             │
-│  ├── GET /catalog ──→ Gateway ──→ Mock API (:18091)         │
-│  ├── Phase 1: Scout (Venice AI evaluates all resources)     │
-│  ├── Phase 2: Buyer (deterministic, code-driven)            │
-│  │   ├── GET /resource → 402 + accepts[]                    │
-│  │   ├── relayer_getFeeData(chainId, token)                 │
-│  │   ├── relayer_send7710Transaction({                      │
-│  │   │     chainId, context,                                │
-│  │   │     transactions: [{                                 │
-│  │   │       permissionContext, executions: [fee, work]     │
-│  │   │     }]                                               │
-│  │   │   })                                                 │
-│  │   ├── relayer_getStatus({id}) → 200 + txHash             │
-│  │   ├── POST /api/payment-confirmed → authorize            │
-│  │   └── GET /resource (X-AUTHORIZED-WALLET) → 200 + data   │
-│  ├── Phase 3: Analyst (Venice AI reviews quality/ROI)       │
-│  └── Phase 4: Synthesis (Venice AI writes final report)     │
-│                                                              │
-│  1Shot Relayer ──gasless tx──→ Base Mainnet (USDC)         │
-└──────────────────────────────────────────────────────────────┘
+    subgraph Exec["Autonomous Execution"]
+        Agent["Agent CLI plus Venice AI"]
+        GW[("Gateway")]
+        Mock["Mock API"]
+        Venice["Venice AI"]
+        Relayer["1Shot Relayer"]
+        Base["Base Mainnet"]
 
-┌──────────────────────────────────────────────────────────────┐
-│                   PROVIDER DASHBOARD                          │
-│                                                              │
-│  React UI /provider                                          │
-│  ├── On-chain USDC balance (wagmi contract read)            │
-│  ├── Total Revenue + Purchase count (from payments.jsonl)   │
-│  ├── Purchase History table (tx hash → BaseScan links)      │
-│  └── Resource management (set prices)                        │
-└──────────────────────────────────────────────────────────────┘
+        Agent -->|GET catalog| GW
+        GW -->|proxy| Mock
+        Agent -->|Scout evaluation| Venice
+        Agent -->|payX402| Relayer
+        Relayer -->|gasless ERC-7710 tx| Base
+        Agent -->|POST payment-confirmed| GW
+        Agent -->|GET resource| GW
+        GW -->|200 plus data| Agent
+        Agent -->|Synthesis| Venice
+    end
+
+    subgraph Provider["Provider Dashboard"]
+        Dashboard["React UI provider page"]
+        Dashboard -->|USDC balance| Base
+        Dashboard -->|Revenue plus purchases| GW
+        GW -->|payments.jsonl| Log[("Purchase Log")]
+    end
+
+    GW1 -.->|agent-config| Agent
 ```
 
-### Payment Flow (sequence)
+### Payment Flow
 
-```
-Agent                          Gateway                    1Shot Relayer           Base
-  │                              │                           │                     │
-  │── GET /reports/asia-daily ─→ │                           │                     │
-  │←──── 402 + accepts[] ───────│                           │                     │
-  │                              │                           │                     │
-  │ (Scout says BUY, score 92)   │                           │                     │
-  │                              │                           │                     │
-  │── relayer_getFeeData ──────────────────────────────────→ │                     │
-  │←──── { gasPrice, minFee, context } ─────────────────────│                     │
-  │                              │                           │                     │
-  │── relayer_send7710Transaction ─────────────────────────→ │                     │
-  │   { chainId, context,         │                          │── gasless tx ──────→│
-  │     transactions: [{          │                          │   USDC transfer     │
-  │       permissionContext,      │                          │←── txHash ──────────│
-  │       executions: [fee, work] │                          │                     │
-  │     }]                        │                          │                     │
-  │   }                           │                          │                     │
-  │←──── taskId ─────────────────────────────────────────── │                     │
-  │                              │                           │                     │
-  │── relayer_getStatus({id}) ──────────────────────────────→│                     │
-  │←──── { status: 200, receipt.txHash } ───────────────────│                     │
-  │                              │                           │                     │
-  │── POST /api/payment-confirmed│                           │                     │
-  │   { wallet, path, amount,    │                           │                     │
-  │     txHash }                 │                           │                     │
-  │←──── { authorized } ─────────│                           │                     │
-  │                              │                           │                     │
-  │── GET /reports/asia-daily ──→│ (X-AUTHORIZED-WALLET)    │                     │
-  │←──── 200 + full report ─────│                           │                     │
+```mermaid
+sequenceDiagram
+    participant A as Agent
+    participant G as Gateway
+    participant R as Relayer
+    participant B as Base
+
+    A->>G: GET /reports/asia-daily
+    G-->>A: 402 Payment Required
+
+    Note over A: Scout says BUY
+
+    A->>R: relayer_getFeeData
+    R-->>A: gasPrice and context
+
+    A->>R: relayer_send7710Transaction
+    R->>B: Gasless USDC transfer
+    B-->>R: txHash confirmed
+    R-->>A: taskId
+
+    A->>R: relayer_getStatus
+    R-->>A: status 200 and txHash
+
+    A->>G: POST payment-confirmed
+    G-->>A: authorized
+
+    A->>G: GET /reports/asia-daily
+    G-->>A: 200 OK full report
 ```
 
 ---
