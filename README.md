@@ -418,6 +418,20 @@ Judges can review the core implementation directly:
 
 ---
 
+## Feedback
+
+Building PayCrawl over this hackathon surfaced several real developer experience challenges with the ERC-7715/7710 ecosystem. Sharing these constructively to help improve the stack:
+
+**MetaMask Flask + SAK Integration:** The biggest challenge was viem's wallet client middleware stripping critical fields (`to`, `isAdjustmentAllowed`) from `wallet_requestExecutionPermissions` calls. We had to bypass viem entirely and use raw `window.ethereum.request()`. Better documentation on which viem versions are compatible with SAK — or a built-in SAK wallet client — would save days of debugging.
+
+**1Shot Relayer RPC Formats:** The JSON-RPC parameter schemas were not clearly documented for ERC-7710 transactions. Figuring out the correct nested `transactions[{permissionContext, executions}]` structure required extensive trial and error. A typed SDK or OpenAPI spec would significantly improve developer experience.
+
+**ERC-7715 Permission Decoding:** `decodeDelegations` from SAK only works in browser context. Agents running in Node.js cannot use SAK directly. A server-side decoding utility would enable cleaner agent-side flows without browser dependencies.
+
+**LLM Reliability for Tool-Chaining:** Venice AI models (and others tested) consistently stopped after encountering HTTP 402 responses, never reaching the payment tool. We pivoted to a deterministic buyer phase based on AI scout scores, which proved far more reliable. Hybrid AI + code pipelines may be the practical sweet spot for production payment agents.
+
+---
+
 ## License
 
 MIT
