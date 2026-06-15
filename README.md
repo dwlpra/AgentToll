@@ -67,38 +67,17 @@ Agent hits paywall → Venice AI evaluates "is this worth the price?"
 ### The Agent's Decision Process
 
 ```mermaid
-flowchart TD
-    subgraph Setup["1. SETUP"]
-        A1["Open Browser, Connect MetaMask Flask"] --> A2["Grant ERC-7715 Permissions"]
-        A2 --> A3["Spending cap 1.00 USDC per 24h"]
-        A3 --> A4["SAK decodeDelegations to Gateway"]
-    end
-
-    subgraph Crawl["2. CRAWL"]
-        B1["Agent fetches catalog"] --> B2["3 resources with prices"]
-        B2 --> B3["GET /reports/asia-daily returns 402"]
-        B2 --> B4["GET /reports/deep-dive returns 402"]
-    end
-
-    subgraph Reason["3. REASON - Scout Phase"]
-        C1["asia-daily scores 92 - BUY"]
-        C2["quick-take scores 22 - SKIP"]
-        C3["deep-dive scores 91 - BUY"]
-    end
-
-    subgraph Pay["4. PAY - Buyer Phase"]
-        D1{"Score above 70?"} -->|Yes| D2["payX402 via 1Shot Relayer"]
-        D1 -->|No| D3["SKIP with AI reasoning"]
-        D2 --> D4["Gasless tx on Base confirmed"]
-        D4 --> D5["POST payment-confirmed"]
-        D5 --> D6["GET resource returns 200"]
-    end
-
-    subgraph Synth["5. ANALYZE and SYNTHESIZE"]
-        E1["Venice AI combines reports"] --> E2["Budget 0.70 of 1.00"]
-    end
-
-    Setup --> Crawl --> Reason --> Pay --> Synth
+flowchart LR
+    A1["Open Browser"] --> A2["Grant ERC-7715"]
+    A2 --> A3["Spending cap set"]
+    A3 --> B1["Agent fetches catalog"]
+    B1 --> B2["3 resources found"]
+    B2 --> C1["Scout scores resources"]
+    C1 --> D1{"Score above 70?"}
+    D1 -->|Yes| D2["payX402 via Relayer"]
+    D1 -->|No| D3["SKIP"]
+    D2 --> E1["Venice AI synthesizes"]
+    E1 --> E2["Budget 0.70 of 1.00"]
 ```
 
 ### What Makes This Special
@@ -118,40 +97,32 @@ flowchart TD
 ## Architecture
 
 ```mermaid
-graph TB
+graph LR
     subgraph Setup["Setup One-Time"]
-        UI["React UI port 5173"]
-        MM["MetaMask Flask"]
-        UI -->|Connect wallet| MM
-        UI -->|ethereum request| MM
-        MM -->|permissionsContext| SAK["SAK decodeDelegations"]
-        SAK -->|Decoded JSON| GW1[("Gateway")]
+        UI["React UI"] --> MM["MetaMask Flask"]
+        MM --> SAK["SAK decodeDelegations"]
+        SAK --> GW1["Gateway"]
     end
 
     subgraph Exec["Autonomous Execution"]
-        Agent["Agent CLI plus Venice AI"]
-        GW[("Gateway")]
-        Mock["Mock API"]
+        Agent["Agent CLI"]
+        GW["Gateway"]
         Venice["Venice AI"]
         Relayer["1Shot Relayer"]
         Base["Base Mainnet"]
 
         Agent -->|GET catalog| GW
-        GW -->|proxy| Mock
-        Agent -->|Scout evaluation| Venice
+        GW -->|proxy| Mock["Mock API"]
+        Agent -->|Scout eval| Venice
         Agent -->|payX402| Relayer
-        Relayer -->|gasless ERC-7710 tx| Base
-        Agent -->|POST payment-confirmed| GW
-        Agent -->|GET resource| GW
-        GW -->|200 plus data| Agent
+        Relayer -->|gasless tx| Base
+        Agent -->|payment confirmed| GW
         Agent -->|Synthesis| Venice
     end
 
     subgraph Provider["Provider Dashboard"]
-        Dashboard["React UI provider page"]
-        Dashboard -->|USDC balance| Base
-        Dashboard -->|Revenue plus purchases| GW
-        GW -->|payments.jsonl| Log[("Purchase Log")]
+        Dashboard["React UI"] -->|USDC balance| Base
+        Dashboard -->|Revenue| GW
     end
 
     GW1 -.->|agent-config| Agent
