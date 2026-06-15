@@ -60,7 +60,10 @@ export function AgentBridge() {
         ? '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`
         : '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`
       const budgetUnits = BigInt(Math.round(budget * 1_000_000))
-      const granted = await (extendedClient as any).grantPermissions([{
+      // NOTE: the ERC-7715 provider action is named `requestExecutionPermissions`
+      // (it triggers MetaMask's permission popup). `grantPermissions` does not exist
+      // in @metamask/smart-accounts-kit and throws "... is not a function".
+      const granted = await (extendedClient as any).requestExecutionPermissions([{
         chainId: chain.id,
         expiry: expiryTimestamp,
         signer: { type: 'account', data: { address } },
